@@ -24,7 +24,8 @@ import {
   MicOff,
   Apple,
   RotateCcw,
-  XCircle
+  XCircle,
+  Trash2
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
@@ -495,11 +496,8 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
 
   const setStatusAndMeals = (newStatus: 'regular' | 'holiday' | 'sick') => {
     setStatus(newStatus);
-    if (newStatus === 'regular') {
-      const allDone: Record<string, 'regular'> = {};
-      MEALS.forEach(m => allDone[m.id] = 'regular');
-      setMeals(allDone);
-    }
+    // Rimuoviamo l'auto-riempimento forzato dei pasti quando si seleziona 'regular'
+    // Questo permette all'utente di tornare allo stato regolare e resettare i pasti manualmente.
   };
 
   const toggleMeal = (mealId: string) => {
@@ -522,6 +520,14 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
   const resetMeal = (mealId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setMeals(prev => ({ ...prev, [mealId]: null }));
+  };
+
+  const resetDay = () => {
+    setStatus('regular');
+    setMood('felice');
+    const emptyMeals: Record<string, null> = {};
+    MEALS.forEach(m => emptyMeals[m.id] = null);
+    setMeals(emptyMeals);
   };
 
   return (
@@ -580,6 +586,12 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
         </div>
       </div>
 
+      <div className="space-y-4">
+        <button onClick={resetDay} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-50 text-gray-400 font-bold text-xs border border-dashed border-gray-200 hover:bg-gray-100 transition-all">
+          <Trash2 size={16} /> Resetta Giornata
+        </button>
+      </div>
+
       <div className="flex gap-4 pt-4">
         <button onClick={onCancel} className="flex-1 py-5 font-bold text-gray-400">Torna indietro</button>
         <button onClick={() => onSubmit({ mood, status, meals })} className="flex-[2] bg-rose-400 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all text-sm">Salva Progressi ✨</button>
@@ -626,7 +638,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     const summary = user.history[dk];
     if (!summary) return 'bg-gray-50 text-gray-400';
 
-    // Determiniamo se il giorno è "effettivamente vuoto"
     const mealsValues = summary.meals ? Object.values(summary.meals) : [];
     const hasAnyMealData = mealsValues.some(v => v !== null);
     const isActuallyEmpty = !hasAnyMealData && summary.status === 'regular';
@@ -636,7 +647,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     if (summary.status === 'sick') return 'bg-amber-50 text-amber-600 border border-amber-100';
     if (summary.isCompleted) return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
     
-    // Altrimenti è "Incompleto" o contiene un KO
     return 'bg-rose-50 text-rose-500 border border-rose-100';
   };
 
