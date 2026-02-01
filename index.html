@@ -5,9 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Luce - Supporto Empatico</title>
-    <!-- Safety script to prevent "process is not defined" errors on deploy -->
+    <!-- Script ad alta priorità per definire process.env nel browser -->
     <script>
-      window.process = window.process || { env: {} };
+      (function() {
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        // La chiave API viene iniettata dall'ambiente, ma definire l'oggetto previene crash.
+      })();
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,11 +32,17 @@
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.3);
       }
-      /* Prevent white flash during load */
-      #root:empty {
-        background: #fffafb;
+      #root {
+        min-height: 100vh;
+      }
+      #root:empty::before {
+        content: "Accendendo la Luce...";
+        display: flex;
+        align-items: center;
+        justify-content: center;
         height: 100vh;
-        width: 100vw;
+        color: #f43f5e;
+        font-weight: bold;
       }
     </style>
   <script type="importmap">

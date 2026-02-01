@@ -53,10 +53,10 @@ const MEALS: MealConfig[] = [
 ];
 
 const SYSTEM_INSTRUCTION = `
-Sei un assistente virtuale empatico e motivazionale di nome "Luce", specializzato nel supporto a persone che stanno seguendo un percorso di recupero o gestione di disturbi alimentari. Il tuo tono deve essere luminoso, incoraggiante, caloroso e mai giudicante.
+Sei un assistente virtuale empatico e motivazionale di nome "Luce", specializzato nel supporto a persone che stanno seguendo un percorso di recupero o gestione di disturbi alimentari. Il tuo tono deve essere luminoso, incoraggiante, caloroso e mai giudicante. Rispondi usando forme maschili (es. Benvenuto) se non specificato diversamente.
 `;
 
-// Helper functions for base64 encoding/decoding and PCM audio
+// PCM Audio helpers
 function encode(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
@@ -129,12 +129,15 @@ const calculateDailyStreak = (history: Record<string, DaySummary>): number => {
   let checkDate = new Date(now);
   const todayKey = getLocalDateKey(now);
   if (!isDaySuccessful(history[todayKey])) checkDate.setDate(checkDate.getDate() - 1);
-  while (true) {
+  while (streak < 3650) {
     const dk = getLocalDateKey(checkDate);
     const summary = history[dk];
-    if (isDaySuccessful(summary)) { streak++; checkDate.setDate(checkDate.getDate() - 1); }
-    else break;
-    if (streak > 3650) break;
+    if (isDaySuccessful(summary)) { 
+      streak++; 
+      checkDate.setDate(checkDate.getDate() - 1); 
+    } else {
+      break;
+    }
   }
   return streak;
 };
@@ -145,7 +148,7 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   let streak = 0;
   let checkMon = new Date(currentMon);
   checkMon.setDate(checkMon.getDate() - 7);
-  while (true) {
+  while (streak < 500) {
     let weekSuccess = true;
     let anyRegularDay = false;
     for (let i = 0; i < 7; i++) {
@@ -154,11 +157,14 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
       const dk = getLocalDateKey(d);
       const summary = history[dk];
       if (!isDaySuccessful(summary)) { weekSuccess = false; break; }
-      if (summary) { if (summary.status === 'regular' || !summary.status) anyRegularDay = true; }
+      if (summary && (summary.status === 'regular' || !summary.status)) anyRegularDay = true;
     }
-    if (weekSuccess && anyRegularDay) { streak++; checkMon.setDate(checkMon.getDate() - 7); }
-    else break;
-    if (streak > 500) break;
+    if (weekSuccess && anyRegularDay) { 
+      streak++; 
+      checkMon.setDate(checkMon.getDate() - 7); 
+    } else {
+      break;
+    }
   }
   return streak;
 };
@@ -208,7 +214,15 @@ const App: React.FC = () => {
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
       if (parsed.lastCheckIn !== todayStr) {
-        return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: parsed.history || {}, streak: calculateDailyStreak(parsed.history || {}), weeklyStreak: calculateWeeklyStreak(parsed.history || {}) };
+        return { 
+          ...parsed, 
+          dailyMeals: {}, 
+          rewardClaimed: false, 
+          isDayClosed: false, 
+          history: parsed.history || {}, 
+          streak: calculateDailyStreak(parsed.history || {}), 
+          weeklyStreak: calculateWeeklyStreak(parsed.history || {}) 
+        };
       }
       return parsed;
     } catch (e) {
@@ -309,9 +323,25 @@ const App: React.FC = () => {
       const hasBonusToday = Object.values(newDailyMeals).some(v => v === 'bonus');
       const bonusAlreadyUsedThisWeek = isBonusUsedInWeekInternal(now, prev.history, {}, dateKey);
       const isActuallyCompleted = mealsCount === MEALS.length && (!hasBonusToday || !bonusAlreadyUsedThisWeek);
-      const todaySummary: DaySummary = { date: dateKey, isCompleted: isActuallyCompleted, mealsCount, hasBonus: hasBonusToday, mood: prev.history[dateKey]?.mood || 'felice', meals: newDailyMeals, status: prev.history[dateKey]?.status || 'regular' };
+      const todaySummary: DaySummary = { 
+        date: dateKey, 
+        isCompleted: isActuallyCompleted, 
+        mealsCount, 
+        hasBonus: hasBonusToday, 
+        mood: prev.history[dateKey]?.mood || 'felice', 
+        meals: newDailyMeals, 
+        status: prev.history[dateKey]?.status || 'regular' 
+      };
       const newHistory = { ...prev.history, [dateKey]: todaySummary };
-      return { ...prev, dailyMeals: newDailyMeals, lastCheckIn: now.toDateString(), history: newHistory, bonusUsed: isBonusUsedInWeekInternal(now, newHistory, newDailyMeals), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
+      return { 
+        ...prev, 
+        dailyMeals: newDailyMeals, 
+        lastCheckIn: now.toDateString(), 
+        history: newHistory, 
+        bonusUsed: isBonusUsedInWeekInternal(now, newHistory, newDailyMeals), 
+        streak: calculateDailyStreak(newHistory), 
+        weeklyStreak: calculateWeeklyStreak(newHistory) 
+      };
     });
     setMealToSelect(null);
   };
@@ -436,7 +466,7 @@ const App: React.FC = () => {
           <h1 className="text-xl font-bold text-gray-800">Luce</h1>
         </div>
         {view !== 'dashboard' && (
-          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><ArrowRight className="rotate-180" size={20} /></button>
+          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"><ArrowRight className="rotate-180" size={20} /></button>
         )}
       </header>
 
@@ -543,8 +573,6 @@ const Dashboard: React.FC<any> = ({
   );
 };
 
-// --- FIX: Implementation of missing helper functions and components ---
-
 const finalizeDay = (
   data: CheckInData, 
   setUser: React.Dispatch<React.SetStateAction<UserState>>, 
@@ -588,7 +616,7 @@ const finalizeDay = (
   setView('dashboard');
   setShowReward(true);
   
-  const statusMsg = data.status === 'sick' ? "Oggi non sono statə bene" : data.status === 'holiday' ? "Oggi ero in vacanza" : "Ho concluso la mia giornata";
+  const statusMsg = data.status === 'sick' ? "Oggi non sono stato bene" : data.status === 'holiday' ? "Oggi ero in vacanza" : "Ho concluso la mia giornata";
   sendMessage(`${statusMsg}. Mi sento ${data.mood} e ho provato ${data.emotions || 'calma'}.`, false);
 };
 
@@ -836,11 +864,11 @@ const RewardModal: React.FC<{ onClaim: () => void }> = ({ onClaim }) => {
         </div>
         <div className="space-y-2">
           <h2 className="text-2xl font-bold text-gray-800 leading-tight">Che Splendore! ✨</h2>
-          <p className="text-gray-500 italic text-sm">Hai completato la giornata con sincerità verso te stessə. Meriti un grande abbraccio virtuale.</p>
+          <p className="text-gray-500 italic text-sm">Hai completato la giornata con sincerità verso te stesso. Meriti un grande abbraccio virtuale.</p>
         </div>
         <button 
           onClick={onClaim} 
-          className="w-full py-5 bg-rose-400 text-white rounded-3xl font-bold shadow-lg shadow-rose-200 active:scale-95 transition-all"
+          className="w-full py-5 bg-rose-400 text-white rounded-3xl font-bold shadow-lg shadow-rose-200 active:scale-90 transition-all"
         >
           Ricevi un Abbraccio 💖
         </button>
