@@ -26,7 +26,8 @@ import {
   RotateCcw,
   XCircle,
   Trash2,
-  Loader2
+  Loader2,
+  Key
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
@@ -242,16 +243,63 @@ const App: React.FC = () => {
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
 
+  // Fix: implement updateHistoryEntry to handle history updates from calendar
+  const updateHistoryEntry = (key: string, summary: DaySummary) => {
+    setUser(prev => {
+      const newHistory = { ...prev.history, [key]: summary };
+      return {
+        ...prev,
+        history: newHistory,
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
+      };
+    });
+  };
+
+  // Fix: implement setMealStatus to handle meal selection from dashboard
+  const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
+    const dk = getLocalDateKey();
+    setUser(prev => {
+      const newMeals = { ...prev.dailyMeals, [mealId]: status };
+      const currentStatus = prev.history[dk]?.status || 'regular';
+      const isCompleted = calculateDayCompletion(currentStatus, newMeals, prev.history, new Date(), dk);
+      const mealsValues = Object.values(newMeals);
+      const mealsCount = mealsValues.filter(v => v !== null).length;
+      const hasBonus = mealsValues.some(v => v === 'bonus');
+      
+      const newSummary: DaySummary = { 
+        ...(prev.history[dk] || { date: dk, mood: 'felice' }),
+        date: dk,
+        meals: newMeals, 
+        isCompleted,
+        mealsCount,
+        hasBonus,
+        status: currentStatus
+      };
+      const newHistory = { ...prev.history, [dk]: newSummary };
+      return { 
+        ...prev, 
+        dailyMeals: newMeals, 
+        history: newHistory,
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
+      };
+    });
+    setMealToSelect(null);
+  };
+
+  // Helper per sbloccare l'audio su iOS
+  const unlockAudio = async () => {
+    const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+    if (AudioContextClass) {
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') await ctx.resume();
+      await ctx.close();
+    }
+  };
+
   useEffect(() => {
-    const unlockAudio = () => {
-      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
-      if (AudioContextClass) {
-        const ctx = new AudioContextClass();
-        ctx.resume().then(() => ctx.close());
-      }
-      window.removeEventListener('touchstart', unlockAudio);
-    };
-    window.addEventListener('touchstart', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio, { once: true });
     return () => window.removeEventListener('touchstart', unlockAudio);
   }, []);
 
@@ -262,42 +310,38 @@ const App: React.FC = () => {
   const todayKey = getLocalDateKey();
   const currentMeals = useMemo(() => user.history[todayKey]?.meals || user.dailyMeals || {}, [user.history, user.dailyMeals, todayKey]);
 
-  const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
-    const now = new Date();
-    const dateKey = getLocalDateKey(now);
-    setUser(prev => {
-      const currentMealsInHistory = prev.history[dateKey]?.meals || prev.dailyMeals;
-      const newDailyMeals = { ...currentMealsInHistory, [mealId]: status };
-      const currentStatus = prev.history[dateKey]?.status || 'regular';
-      const isCompleted = calculateDayCompletion(currentStatus, newDailyMeals, prev.history, now, dateKey);
-      const summary: DaySummary = { ...prev.history[dateKey], date: dateKey, isCompleted, mood: prev.history[dateKey]?.mood || 'felice', meals: newDailyMeals, status: currentStatus };
-      const newHistory = { ...prev.history, [dateKey]: summary };
-      return { ...prev, dailyMeals: newDailyMeals, history: newHistory, streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
-    });
-    setMealToSelect(null);
-  };
-
-  const updateHistoryEntry = (dk: string, summary: DaySummary) => {
-    const isToday = dk === getLocalDateKey();
-    setUser(prev => {
-      const newHistory = { ...prev.history, [dk]: summary };
-      return { ...prev, history: newHistory, dailyMeals: isToday ? (summary.meals || {}) : prev.dailyMeals, streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
-    });
+  // Fix: use casted aistudio to avoid declaration conflict
+  const openApiKeySelector = async () => {
+    const aistudio = (window as any).aistudio;
+    if (aistudio) {
+      await aistudio.openSelectKey();
+      setAiStatus('ok');
+    } else {
+      alert("Configurazione API non disponibile. Per favore riprova più tardi.");
+    }
   };
 
   const sendMessage = async (text: string, silent = false) => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
-    const responseText = await getLuceResponse(messages, text);
-    if (responseText === "OPS_KEY_ERROR") {
-      setAiStatus('error');
-      setMessages(prev => [...prev, { role: 'assistant', content: "Configurazione API non valida. ✨", timestamp: new Date() }]);
-    } else {
-      setAiStatus('ok');
-      setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
+    
+    try {
+      const responseText = await getLuceResponse(messages, text);
+      if (responseText === "OPS_KEY_ERROR") {
+        setAiStatus('error');
+        setMessages(prev => [...prev, { role: 'assistant', content: "Ops! La mia chiave API sembra non funzionare. Puoi riconfigurarla cliccando sull'icona della chiave? ✨", timestamp: new Date() }]);
+        await openApiKeySelector();
+      } else {
+        setAiStatus('ok');
+        setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, { role: 'assistant', content: "C'è stato un piccolo intoppo tecnico, ma sono sempre qui per te! 💖", timestamp: new Date() }]);
+    } finally {
+      setIsTyping(false);
     }
-    setIsTyping(false);
   };
 
   const toggleLive = async () => {
@@ -311,12 +355,13 @@ const App: React.FC = () => {
     try {
       const apiKey = process.env.API_KEY;
       if (!apiKey) {
+        await openApiKeySelector();
         setIsLiveLoading(false);
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => {
-        alert("Attiva il microfono nelle impostazioni di Safari.");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(async err => {
+        alert("Per favore, attiva il microfono nelle impostazioni del tuo iPhone.");
         throw err;
       });
       
@@ -344,6 +389,7 @@ const App: React.FC = () => {
             scriptProcessor.connect(inputCtx.destination);
             setIsLiveActive(true);
             setIsLiveLoading(false);
+            setAiStatus('ok');
           },
           onmessage: async (msg) => {
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -356,7 +402,13 @@ const App: React.FC = () => {
             }
           },
           onclose: () => { setIsLiveActive(false); setIsLiveLoading(false); inputCtx.close(); outputCtx.close(); },
-          onerror: () => { setIsLiveActive(false); setIsLiveLoading(false); }
+          onerror: async (e: any) => { 
+            setIsLiveActive(false); 
+            setIsLiveLoading(false);
+            if (e?.message?.includes('not found') || e?.message?.includes('404') || e?.message?.includes('403')) {
+               await openApiKeySelector();
+            }
+          }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
@@ -367,12 +419,23 @@ const App: React.FC = () => {
     }
   };
 
+  // Fix: populate DaySummary fully in closeDay
   const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | 'ko' | null> }) => {
     const dk = getLocalDateKey();
     setUser(prev => {
       const mealsToUse = data.meals || prev.dailyMeals;
+      const mealsValues = Object.values(mealsToUse);
       const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), dk);
-      const summary: DaySummary = { ...prev.history[dk], date: dk, isCompleted, mood: data.mood, status: data.status, meals: mealsToUse };
+      const summary: DaySummary = { 
+        ...prev.history[dk], 
+        date: dk, 
+        isCompleted, 
+        mood: data.mood, 
+        status: data.status, 
+        meals: mealsToUse,
+        mealsCount: mealsValues.filter(v => v !== null).length,
+        hasBonus: mealsValues.some(v => v === 'bonus')
+      };
       const newHistory = { ...prev.history, [dk]: summary };
       return { ...prev, history: newHistory, dailyMeals: mealsToUse, isDayClosed: true, lastCheckIn: new Date().toDateString(), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
@@ -399,15 +462,22 @@ const App: React.FC = () => {
           <LuceLogo className="shadow-lg rounded-xl" />
           <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Luce</h1>
         </div>
-        {view === 'dashboard' && !user.isDayClosed ? (
-          <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
-            <ArrowRight size={24} strokeWidth={2.5} />
-          </button>
-        ) : view !== 'dashboard' ? (
-          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
-            <ArrowRight className="rotate-180" size={24} strokeWidth={2.5} />
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {aiStatus === 'error' && (
+            <button onClick={openApiKeySelector} className="p-2 text-rose-500 animate-pulse transition-all">
+              <Key size={24} />
+            </button>
+          )}
+          {view === 'dashboard' && !user.isDayClosed ? (
+            <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
+              <ArrowRight size={24} strokeWidth={2.5} />
+            </button>
+          ) : view !== 'dashboard' ? (
+            <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
+              <ArrowRight className="rotate-180" size={24} strokeWidth={2.5} />
+            </button>
+          ) : null}
+        </div>
       </header>
 
       <main className="flex-1 px-6 pb-2 z-10 overflow-y-auto custom-scrollbar">
@@ -608,7 +678,20 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     return 'bg-rose-100 text-rose-800 border-2 border-rose-300';
   };
 
-  if (editing) return <CheckInForm history={user.history} dateKey={editing.key} initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} onSubmit={(d:any) => { const targetDate = parseDateKey(editing.key); const isCompleted = calculateDayCompletion(d.status || 'regular', d.meals || {}, user.history, targetDate, editing.key); onUpdate(editing.key, { ...user.history[editing.key], ...d, isCompleted }); setEditing(null); }} onCancel={() => setEditing(null)} />;
+  // Fix: CalendarView's onSubmit now populates DaySummary fully
+  if (editing) return <CheckInForm history={user.history} dateKey={editing.key} initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} onSubmit={(d:any) => { 
+    const targetDate = parseDateKey(editing.key); 
+    const mealsValues = Object.values(d.meals || {});
+    const isCompleted = calculateDayCompletion(d.status || 'regular', d.meals || {}, user.history, targetDate, editing.key); 
+    onUpdate(editing.key, { 
+      ...user.history[editing.key], 
+      ...d, 
+      isCompleted,
+      mealsCount: mealsValues.filter(v => v !== null).length,
+      hasBonus: mealsValues.some(v => v === 'bonus')
+    }); 
+    setEditing(null); 
+  }} onCancel={() => setEditing(null)} />;
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in">
@@ -637,22 +720,29 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
 
 const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActive, isLiveLoading, onToggleLive }) => {
   const [inp, setInp] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
   return (
     <div className="flex flex-col h-[65vh] space-y-4">
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
         {messages.length === 0 && <div className="text-center p-10 space-y-3"><div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-500"><MessageCircle size={40} strokeWidth={2.5} /></div><p className="text-base text-gray-900 font-black tracking-tight">Inizia a parlare con Luce ✨</p></div>}
         {messages.map((m: any, i: number) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`p-5 rounded-[2rem] text-[15px] font-bold max-w-[85%] leading-snug shadow-sm ${m.role === 'user' ? 'bg-rose-500 text-white' : 'bg-white border-2 border-rose-50 text-gray-900'}`}>{m.content}</div>
+            <div className={`p-5 rounded-[2rem] text-[15px] font-bold max-w-[85%] shadow-sm ${m.role === 'user' ? 'bg-rose-500 text-white' : 'bg-white border-2 border-rose-50 text-gray-900'}`}>{m.content}</div>
           </div>
         ))}
         {isTyping && <div className="text-rose-600 text-[11px] animate-pulse font-black uppercase tracking-widest px-4">Luce sta scrivendo...</div>}
+        <div ref={messagesEndRef} />
       </div>
       
       <div className="relative flex items-center bg-white p-2.5 rounded-[2.5rem] border-2 border-rose-100 shadow-2xl gap-3 mt-auto">
         <button 
           type="button"
-          onClick={onToggleLive} 
+          onClick={(e) => { e.preventDefault(); onToggleLive(); }} 
           disabled={isLiveLoading}
           className={`flex-none w-11 h-11 flex items-center justify-center rounded-full transition-all shadow-sm ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-90 hover:bg-rose-100'}`}
         >
