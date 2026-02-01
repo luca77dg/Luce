@@ -42,6 +42,8 @@ const MEALS: MealConfig[] = [
 
 const SYSTEM_INSTRUCTION = `Sei Luce, un assistente virtuale empatico per il recupero alimentare. Il tuo tono è luminoso e incoraggiante. Usa emoji ✨. Rispondi sempre al maschile verso l'utente.`;
 
+const APP_ICON_SVG = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWQxIiB4MT0iMCIgeTE9IjAiIHgyPSIxODAiIHkyPSIxODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iI0ZCM0E1RSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGNDNGNUUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGZpbHRlciBpZD0iZmlsdGVyMCIgeD0iNDAiIHk9IjQwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVPZmZzZXQgZHk9IjIiLz4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMiIvPgo8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMC4xIDAiLz4KPGZlQmxlbmQgbW9kZT0ibm9ybWFsIiBpbjI9IlNvdXJjZUdyYXBoaWMiLz4KPC9maWx0ZXI+CjwvZGVmcz4KPHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIHJ4PSI0MCIgZmlsbBackmwocmdyYWQxKSIvPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMCkiPgo8cGF0aCBkPSJNOTAgNDRWOThNOTAgMTI2VjEzNk0xMzIgOTBIMTIyTTU4IDkwSDQ4TTEyMCA2MEwxMTIgNjhNNjggMTI0TDYwIDEzMk02MCA2MEw2OCA2OE0xMTIgMTI0TDEyMCAxMzJNMTIwIDkwQzEyMCAxMDYuNTY5IDEwNi41NjkgMTIwIDkwIDEyMEM3My40MzE1IDEyMCA2MCAxMDYuNTY5IDYwIDkwQzYwIDczLjQzMTUgNzMuNDMxNSA2MCA5MCA2MEMxMDYuNTY5IDYwIDEyMCA3My40MzE1IDEyMCA5MFoiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+";
+
 // --- HELPER FUNCTIONS ---
 function encode(bytes: Uint8Array) {
   let binary = '';
@@ -451,8 +453,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
       <header className="px-6 pt-8 pb-4 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 bg-rose-400 rounded-2xl flex items-center justify-center text-white shadow-lg"><Sun size={24} /></div>
+        <div className="flex items-center gap-3">
+          <img src={APP_ICON_SVG} alt="Luce Icon" className="w-10 h-10 rounded-xl shadow-lg" />
           <h1 className="text-xl font-bold text-gray-800">Luce</h1>
         </div>
         {view === 'dashboard' && !user.isDayClosed ? (
