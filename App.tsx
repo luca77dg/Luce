@@ -42,7 +42,19 @@ const MEALS: MealConfig[] = [
 
 const SYSTEM_INSTRUCTION = `Sei Luce, un assistente virtuale empatico per il recupero alimentare. Il tuo tono è luminoso e incoraggiante. Usa emoji ✨. Rispondi sempre al maschile verso l'utente.`;
 
-const APP_ICON_SVG = "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWQxIiB4MT0iMCIgeTE9IjAiIHgyPSIxODAiIHkyPSIxODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iI0ZCM0E1RSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGNDNGNUUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGZpbHRlciBpZD0iZmlsdGVyMCIgeD0iNDAiIHk9IjQwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVPZmZzZXQgZHk9IjIiLz4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMiIvPgo8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMC4xIDAiLz4KPGZlQmxlbmQgbW9kZT0ibm9ybWFsIiBpbjI9IlNvdXJjZUdyYXBoaWMiLz4KPC9maWx0ZXI+CjwvZGVmcz4KPHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIHJ4PSI0MCIgZmlsbBackmwocmdyYWQxKSIvPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMCkiPgo8cGF0aCBkPSJNOTAgNDRWOThNOTAgMTI2VjEzNk0xMzIgOTBIMTIyTTU4IDkwSDQ4TTEyMCA2MEwxMTIgNjhNNjggMTI0TDYwIDEzMk02MCA2MEw2OCA2OE0xMTIgMTI0TDEyMCAxMzJNMTIwIDkwQzEyMCAxMDYuNTY5IDEwNi41NjkgMTIwIDkwIDEyMEM3My40MzE1IDEyMCA2MCAxMDYuNTY5IDYwIDkwQzYwIDczLjQzMTUgNzMuNDMxNSA2MCA5MCA2MEMxMDYuNTY5IDYwIDEyMCA3My40MzE1IDEyMCA5MFoiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+";
+// Componente Logo Inline per evitare problemi di caricamento base64
+const LuceLogo = ({ className }: { className?: string }) => (
+  <svg width="40" height="40" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <defs>
+      <linearGradient id="grad1" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FB3A5E" />
+        <stop offset="1" stopColor="#F43F5E" />
+      </linearGradient>
+    </defs>
+    <rect width="180" height="180" rx="40" fill="url(#grad1)" />
+    <path d="M90 44V54M90 126V136M136 90H126M54 90H44M122 58L115 65M65 115L58 122M58 58L65 65M115 115L122 122M110 90C110 101.046 101.046 110 90 110C78.9543 110 70 101.046 70 90C70 78.9543 78.9543 70 90 70C101.046 70 110 78.9543 110 90Z" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
 
 // --- HELPER FUNCTIONS ---
 function encode(bytes: Uint8Array) {
@@ -104,15 +116,12 @@ const hasBonusInWeek = (history: Record<string, DaySummary>, date: Date, exclude
   return false;
 };
 
-// Logica centralizzata per decidere se un giorno è considerato "OK"
 const isDaySuccessful = (summary: DaySummary | undefined): boolean => {
   if (!summary) return false;
-  // Ferie e Malattia sono sempre considerati OK ai fini della streak
   if (summary.status === 'holiday' || summary.status === 'sick') return true;
   return !!summary.isCompleted;
 };
 
-// Calcola se un giorno regolare è completato correttamente
 const calculateDayCompletion = (status: 'regular' | 'holiday' | 'sick', meals: Record<string, any>, history: Record<string, DaySummary>, date: Date, excludeKey?: string) => {
   if (status === 'holiday' || status === 'sick') return true;
   
@@ -122,7 +131,6 @@ const calculateDayCompletion = (status: 'regular' | 'holiday' | 'sick', meals: R
   const hasKo = mealsValues.some(v => v === 'ko');
   const otherBonusInWeek = hasBonusInWeek(history, date, excludeKey);
 
-  // Un giorno regolare è completo se ha tutti i pasti, nessun KO e non viola il limite del bonus settimanale
   return mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
 };
 
@@ -271,7 +279,6 @@ const App: React.FC = () => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
   }, [user]);
 
-  // Sincronizzazione automatica tra history e dailyMeals per 'oggi'
   const todayKey = getLocalDateKey();
   const currentMeals = useMemo(() => {
     return user.history[todayKey]?.meals || user.dailyMeals || {};
@@ -454,16 +461,16 @@ const App: React.FC = () => {
     <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
       <header className="px-6 pt-8 pb-4 flex justify-between items-center z-10">
         <div className="flex items-center gap-3">
-          <img src={APP_ICON_SVG} alt="Luce Icon" className="w-10 h-10 rounded-xl shadow-lg" />
-          <h1 className="text-xl font-bold text-gray-800">Luce</h1>
+          <LuceLogo className="shadow-lg rounded-xl" />
+          <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Luce</h1>
         </div>
         {view === 'dashboard' && !user.isDayClosed ? (
-          <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
-            <ArrowRight size={24} />
+          <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
+            <ArrowRight size={24} strokeWidth={2.5} />
           </button>
         ) : view !== 'dashboard' ? (
-          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
-            <ArrowRight className="rotate-180" size={24} />
+          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
+            <ArrowRight className="rotate-180" size={24} strokeWidth={2.5} />
           </button>
         ) : null}
       </header>
@@ -472,58 +479,58 @@ const App: React.FC = () => {
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             <div className="space-y-1">
-              <h2 className="text-2xl font-bold text-gray-800">Ciao, {user.name} ✨</h2>
-              <p className="text-gray-500 text-xs font-medium leading-relaxed">{motivationalPhrase}</p>
+              <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Ciao, {user.name} ✨</h2>
+              <p className="text-gray-700 text-sm font-semibold leading-relaxed">{motivationalPhrase}</p>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#fcf5e5] p-6 rounded-[2.2rem] flex flex-col items-center border border-[#f5ead2] shadow-sm transition-all active:scale-95">
-                <Star className="text-[#F4A261] mb-2" size={36} />
-                <span className="text-4xl font-bold text-[#5C4033]">{user.weeklyStreak}</span>
-                <span className="text-[10px] uppercase font-extrabold text-[#D4A373] text-center tracking-wider mt-1">Settimane</span>
+                <Star className="text-[#F4A261] mb-2" size={36} fill="#F4A261" />
+                <span className="text-4xl font-black text-[#5C4033]">{user.weeklyStreak}</span>
+                <span className="text-[11px] uppercase font-black text-[#D4A373] text-center tracking-widest mt-1">Settimane</span>
               </div>
               <div className={`${bonusUsedThisWeek ? 'bg-rose-50 border-rose-100' : 'bg-[#e8f5f1] border-[#d8ebe6]'} p-6 rounded-[2.2rem] flex flex-col items-center border shadow-sm transition-all active:scale-95`}>
                 {bonusUsedThisWeek ? (
                   <Sparkles className="text-rose-500 mb-2" size={36} />
                 ) : (
-                  <Heart className="text-[#2A9D8F] mb-2" size={36} />
+                  <Heart className="text-[#2A9D8F] mb-2" size={36} fill="#2A9D8F" />
                 )}
-                <span className={`text-lg font-bold ${bonusUsedThisWeek ? 'text-rose-700' : 'text-[#1D3557]'} text-center leading-tight mt-1`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
-                <span className={`text-[10px] uppercase font-extrabold ${bonusUsedThisWeek ? 'text-rose-400' : 'text-[#2A9D8F]'} text-center tracking-wider mt-auto`}>Bonus Sett.</span>
+                <span className={`text-xl font-black ${bonusUsedThisWeek ? 'text-rose-700' : 'text-[#1D3557]'} text-center leading-tight mt-1 tracking-tight`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
+                <span className={`text-[11px] uppercase font-black ${bonusUsedThisWeek ? 'text-rose-400' : 'text-[#2A9D8F]'} text-center tracking-widest mt-auto`}>Bonus Sett.</span>
               </div>
             </div>
 
-            <div className="bg-gray-50/50 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
-              <h3 className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Sun className="text-amber-400" size={20} /> Pasti Odierni</h3>
+            <div className="bg-gray-100/40 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
+              <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2 text-base uppercase tracking-wider"><Sun className="text-amber-500" size={22} strokeWidth={2.5} /> Pasti Odierni</h3>
               {MEALS.map(meal => (
-                <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all group">
+                <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all group border border-gray-100/50">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gray-50 group-hover:bg-rose-50 transition-colors">
-                      {meal.icon === 'coffee' && <Coffee size={20} className="text-gray-400" />}
-                      {meal.icon === 'apple' && <Apple size={20} className="text-gray-400" />}
-                      {meal.icon === 'utensils' && <Utensils size={20} className="text-gray-400" />}
-                      {meal.icon === 'moon' && <Moon size={20} className="text-gray-400" />}
+                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-gray-50 group-hover:bg-rose-50 transition-colors">
+                      {meal.icon === 'coffee' && <Coffee size={22} className="text-gray-600" strokeWidth={2} />}
+                      {meal.icon === 'apple' && <Apple size={22} className="text-gray-600" strokeWidth={2} />}
+                      {meal.icon === 'utensils' && <Utensils size={22} className="text-gray-600" strokeWidth={2} />}
+                      {meal.icon === 'moon' && <Moon size={22} className="text-gray-600" strokeWidth={2} />}
                     </div>
-                    <div className="text-left"><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400">{meal.time}</p></div>
+                    <div className="text-left"><p className="text-[15px] font-extrabold text-gray-900">{meal.label}</p><p className="text-[11px] text-gray-500 font-medium">{meal.time}</p></div>
                   </div>
                   {currentMeals[meal.id] ? (
-                    <div className={`rounded-full p-0.5 border-2 ${currentMeals[meal.id] === 'ko' ? 'border-rose-400 text-rose-400' : currentMeals[meal.id] === 'bonus' ? 'border-amber-400 text-amber-400' : 'border-emerald-400 bg-emerald-400 text-white'}`}>
-                      {currentMeals[meal.id] === 'ko' ? <XCircle size={18} /> : currentMeals[meal.id] === 'bonus' ? <Star size={18} /> : <Check size={18} />}
+                    <div className={`rounded-full p-1 border-2 ${currentMeals[meal.id] === 'ko' ? 'border-rose-500 text-rose-500' : currentMeals[meal.id] === 'bonus' ? 'border-amber-500 text-amber-500' : 'border-emerald-500 bg-emerald-500 text-white shadow-emerald-200 shadow-lg'}`}>
+                      {currentMeals[meal.id] === 'ko' ? <XCircle size={20} strokeWidth={2.5} /> : currentMeals[meal.id] === 'bonus' ? <Star size={20} strokeWidth={2.5} fill="currentColor" /> : <Check size={20} strokeWidth={3} />}
                     </div>
                   ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-gray-100" />
+                    <div className="w-7 h-7 rounded-full border-2 border-gray-200" />
                   )}
                 </button>
               ))}
             </div>
 
             {user.isDayClosed && (
-              <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-600 font-bold border border-rose-100 animate-in fade-in">
+              <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-700 font-black border border-rose-200 animate-in fade-in shadow-sm tracking-tight">
                 Giornata conclusa con cura ✨
               </div>
             )}
             
-            <div className="flex justify-center"><div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><div className={`w-1.5 h-1.5 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[9px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
+            <div className="flex justify-center"><div className={`px-5 py-2 rounded-full border-2 flex items-center gap-2 shadow-sm ${aiStatus === 'ok' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}><div className={`w-2 h-2 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[10px] font-black uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
         )}
         
@@ -535,10 +542,10 @@ const App: React.FC = () => {
       {mealToSelect && <MealSelector mealId={mealToSelect} isBonusAvailable={!bonusUsedThisWeek} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
-      <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><CalendarIcon size={28} /></button>
-        <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300 hover:bg-rose-200'}`}><Sun size={32} /></button></div>
-        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><MessageCircle size={28} /></button>
+      <nav className="p-4 flex justify-around items-center border-t border-gray-200 bg-white z-20 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
+        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-900 scale-110' : 'text-gray-400 hover:text-rose-400'}`}><CalendarIcon size={30} strokeWidth={view === 'calendar' ? 2.5 : 2} /></button>
+        <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-18 h-18 rounded-full flex items-center justify-center text-white shadow-2xl border-6 border-white transition-all ${view === 'dashboard' ? 'bg-rose-500 scale-110' : 'bg-gray-400 hover:bg-rose-300'}`}><Sun size={36} strokeWidth={2.5} /></button></div>
+        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-900 scale-110' : 'text-gray-400 hover:text-rose-400'}`}><MessageCircle size={30} strokeWidth={view === 'chat' ? 2.5 : 2} /></button>
       </nav>
     </div>
   );
@@ -594,39 +601,39 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom duration-500 pb-12">
-      <h2 className="text-2xl font-bold text-gray-800 leading-tight">Com'è andata la giornata?</h2>
+      <h2 className="text-3xl font-black text-gray-900 leading-tight tracking-tight">Com'è andata la giornata?</h2>
       
       <div className="space-y-4">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Stato Odierno</p>
+        <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Stato Odierno</p>
         <div className="grid grid-cols-3 gap-3">
           {[
             { id: 'regular', label: 'Regolare' },
             { id: 'holiday', label: 'Ferie' },
             { id: 'sick', label: 'Malattia' }
           ].map(s => (
-            <button key={s.id} onClick={() => setStatusAndMeals(s.id as any)} className={`py-4 rounded-3xl border-2 transition-all font-bold text-[10px] uppercase shadow-sm ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white text-gray-400 border-gray-100'}`}>{s.label}</button>
+            <button key={s.id} onClick={() => setStatusAndMeals(s.id as any)} className={`py-4 rounded-3xl border-3 transition-all font-black text-[11px] uppercase shadow-sm ${status === s.id ? 'border-rose-500 bg-rose-50 text-rose-700' : 'bg-white text-gray-400 border-gray-100'}`}>{s.label}</button>
           ))}
         </div>
       </div>
 
       <div className="space-y-4">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Controlla i tuoi Pasti</p>
-        <div className="space-y-2">
+        <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Controlla i tuoi Pasti</p>
+        <div className="space-y-3">
           {MEALS.map(meal => (
-            <div key={meal.id} onClick={() => toggleMeal(meal.id)} className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-[0.98] transition-all cursor-pointer group">
-              <span className="text-xs font-bold text-gray-700">{meal.label}</span>
-              <div className="flex items-center gap-2">
-                <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all shadow-sm ${
-                  meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 border border-amber-200' : 
-                  meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' : 
-                  meals[meal.id] === 'ko' ? 'bg-rose-100 text-rose-600 border border-rose-200' :
-                  'bg-gray-50 text-gray-300 border border-gray-100'
+            <div key={meal.id} onClick={() => toggleMeal(meal.id)} className="w-full flex items-center justify-between p-4 rounded-2xl bg-white border border-gray-200 shadow-sm active:scale-[0.98] transition-all cursor-pointer group">
+              <span className="text-sm font-black text-gray-900">{meal.label}</span>
+              <div className="flex items-center gap-3">
+                <div className={`px-4 py-2 rounded-full text-[11px] font-black uppercase transition-all shadow-sm border-2 ${
+                  meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-700 border-amber-300' : 
+                  meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 
+                  meals[meal.id] === 'ko' ? 'bg-rose-100 text-rose-700 border-rose-300' :
+                  'bg-gray-50 text-gray-500 border-gray-200'
                 }`}>
                   {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : meals[meal.id] === 'ko' ? 'KO' : 'Incompleto'}
                 </div>
                 {meals[meal.id] !== null && (
-                  <button onClick={(e) => resetMeal(meal.id, e)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors" title="Reset pasto">
-                    <RotateCcw size={14} />
+                  <button onClick={(e) => resetMeal(meal.id, e)} className="p-2 hover:bg-gray-100 rounded-full text-gray-600 transition-colors" title="Reset pasto">
+                    <RotateCcw size={18} strokeWidth={2.5} />
                   </button>
                 )}
               </div>
@@ -636,27 +643,27 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
       </div>
 
       <div className="space-y-4">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Il tuo Mood</p>
+        <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Il tuo Mood</p>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { id: 'felice', icon: Smile, color: 'text-emerald-500' },
-            { id: 'così così', icon: Meh, color: 'text-amber-500' },
-            { id: 'difficile', icon: Frown, color: 'text-rose-500' }
+            { id: 'felice', icon: Smile, color: 'text-emerald-600' },
+            { id: 'così così', icon: Meh, color: 'text-amber-600' },
+            { id: 'difficile', icon: Frown, color: 'text-rose-600' }
           ].map(m => (
-            <button key={m.id} onClick={() => setMood(m.id)} className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md scale-105' : 'bg-white border-gray-100'}`}><m.icon size={32} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} /></button>
+            <button key={m.id} onClick={() => setMood(m.id)} className={`p-6 rounded-3xl border-3 transition-all ${mood === m.id ? 'border-rose-500 bg-rose-50 shadow-lg scale-105' : 'bg-white border-gray-100'}`}><m.icon size={36} strokeWidth={2.5} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} /></button>
           ))}
         </div>
       </div>
 
-      <div className="space-y-4">
-        <button onClick={resetDay} className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-gray-50 text-gray-400 font-bold text-xs border border-dashed border-gray-200 hover:bg-gray-100 transition-all">
-          <Trash2 size={16} /> Resetta Giornata
+      <div className="space-y-4 pt-4">
+        <button onClick={resetDay} className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gray-100 text-gray-700 font-black text-[11px] uppercase border-2 border-dashed border-gray-300 hover:bg-gray-200 transition-all tracking-widest">
+          <Trash2 size={18} /> Resetta Giornata
         </button>
       </div>
 
       <div className="flex gap-4 pt-4">
-        <button onClick={onCancel} className="flex-1 py-5 font-bold text-gray-400">Torna indietro</button>
-        <button onClick={() => onSubmit({ mood, status, meals })} className="flex-[2] bg-rose-400 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all text-sm">Salva Progressi ✨</button>
+        <button onClick={onCancel} className="flex-1 py-5 font-black text-gray-500 uppercase text-[11px] tracking-widest">Annulla</button>
+        <button onClick={() => onSubmit({ mood, status, meals })} className="flex-[2] bg-rose-500 text-white py-5 rounded-[2.2rem] font-black shadow-2xl active:scale-95 transition-all text-sm uppercase tracking-widest">Salva Progressi ✨</button>
       </div>
     </div>
   );
@@ -706,30 +713,30 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     }
 
     if (hasAnyKo) {
-       return <div className="w-8 h-8 bg-rose-50 rounded-full flex items-center justify-center border border-rose-100 shadow-sm"><XCircle size={14} className="text-rose-500" /></div>;
+       return <div className="w-8 h-8 bg-rose-50 rounded-full flex items-center justify-center border border-rose-200 shadow-sm"><XCircle size={15} className="text-rose-600" strokeWidth={2.5} /></div>;
     }
 
     if (allSuccessful && hasRegularDay) {
-       return <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm"><Star size={14} className="text-amber-500 fill-amber-500" /></div>;
+       return <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-200 animate-pulse shadow-sm"><Star size={15} className="text-amber-600 fill-amber-500" strokeWidth={2.5} /></div>;
     }
 
-    return <div className="w-2 h-2 rounded-full bg-gray-100" />;
+    return <div className="w-2 h-2 rounded-full bg-gray-200" />;
   };
 
   const getDayColorClass = (dk: string) => {
     const summary = user.history[dk];
-    if (!summary) return 'bg-gray-50 text-gray-400';
+    if (!summary) return 'bg-gray-100 text-gray-500';
 
     const mealsValues = summary.meals ? Object.values(summary.meals) : [];
     const hasAnyMealData = mealsValues.some(v => v !== null);
     const isActuallyEmpty = !hasAnyMealData && summary.status === 'regular';
 
-    if (isActuallyEmpty) return 'bg-gray-50 text-gray-400';
-    if (summary.status === 'holiday') return 'bg-sky-50 text-sky-600 border border-sky-100';
-    if (summary.status === 'sick') return 'bg-amber-50 text-amber-600 border border-amber-100';
-    if (summary.isCompleted) return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+    if (isActuallyEmpty) return 'bg-gray-100 text-gray-500';
+    if (summary.status === 'holiday') return 'bg-sky-100 text-sky-800 border-2 border-sky-300';
+    if (summary.status === 'sick') return 'bg-amber-100 text-amber-800 border-2 border-amber-300';
+    if (summary.isCompleted) return 'bg-emerald-100 text-emerald-800 border-2 border-emerald-300';
     
-    return 'bg-rose-50 text-rose-500 border border-rose-100';
+    return 'bg-rose-100 text-rose-800 border-2 border-rose-300';
   };
 
   if (editing) return (
@@ -750,27 +757,27 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
   return (
     <div className="space-y-6 pb-12 animate-in fade-in">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><TrendingUp className="text-rose-400" /> Il Tuo Viaggio</h2>
-        <div className="flex items-center gap-2 bg-white p-1 rounded-full border shadow-sm">
-          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() - 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} /></button>
-          <span className="text-xs font-bold uppercase px-2">{curr.toLocaleDateString('it-IT', { month: 'short', year: 'numeric' })}</span>
-          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() + 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronRight size={20} /></button>
+        <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2 tracking-tight"><TrendingUp className="text-rose-500" strokeWidth={3} /> Il Tuo Viaggio</h2>
+        <div className="flex items-center gap-2 bg-white p-1 rounded-full border-2 border-gray-100 shadow-sm">
+          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() - 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={22} strokeWidth={2.5} /></button>
+          <span className="text-xs font-black uppercase px-2 text-gray-900">{curr.toLocaleDateString('it-IT', { month: 'short', year: 'numeric' })}</span>
+          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() + 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronRight size={22} strokeWidth={2.5} /></button>
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-        <div className="grid grid-cols-8 gap-1 mb-4">
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-md border-2 border-gray-100/50 overflow-hidden">
+        <div className="grid grid-cols-8 gap-2 mb-4">
           {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom', 'Premio'].map(h => (
-            <div key={h} className="text-center text-[8px] font-extrabold text-gray-300 uppercase tracking-tighter">{h}</div>
+            <div key={h} className="text-center text-[9px] font-black text-gray-400 uppercase tracking-tighter">{h}</div>
           ))}
           {grid.map((week, wi) => (
             <React.Fragment key={wi}>
               {week.map((d, di) => {
-                if (!d) return <div key={`empty-${wi}-${di}`} className="w-9 h-9" />;
+                if (!d) return <div key={`empty-${wi}-${di}`} className="w-10 h-10" />;
                 const dk = getLocalDateKey(d);
                 const isToday = dk === getLocalDateKey();
                 return (
-                  <button key={dk} onClick={() => setEditing({ date: d, key: dk })} className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all hover:scale-110 active:scale-90 ${getDayColorClass(dk)} ${isToday ? 'ring-2 ring-rose-300 ring-offset-1' : ''}`}>
+                  <button key={dk} onClick={() => setEditing({ date: d, key: dk })} className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black transition-all hover:scale-110 active:scale-90 ${getDayColorClass(dk)} ${isToday ? 'ring-3 ring-rose-400 ring-offset-2' : ''}`}>
                     {d.getDate()}
                   </button>
                 );
@@ -783,13 +790,13 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-[2.5rem] border border-gray-100 space-y-4 shadow-sm">
-        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Legenda Viaggio</p>
-        <div className="grid grid-cols-2 gap-y-3 gap-x-6">
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-emerald-100 border border-emerald-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Completato</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-sky-100 border border-sky-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Ferie</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-amber-100 border border-amber-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Malattia</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-rose-100 border border-rose-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Incompleto</span></div>
+      <div className="bg-white p-6 rounded-[2.5rem] border-2 border-gray-100/50 space-y-4 shadow-sm">
+        <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">Legenda Viaggio</p>
+        <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+          <div className="flex items-center gap-3"><div className="w-5 h-5 bg-emerald-100 border-2 border-emerald-400 rounded-md" /><span className="text-xs font-black text-gray-900">Completato</span></div>
+          <div className="flex items-center gap-3"><div className="w-5 h-5 bg-sky-100 border-2 border-sky-400 rounded-md" /><span className="text-xs font-black text-gray-900">Ferie</span></div>
+          <div className="flex items-center gap-3"><div className="w-5 h-5 bg-amber-100 border-2 border-amber-400 rounded-md" /><span className="text-xs font-black text-gray-900">Malattia</span></div>
+          <div className="flex items-center gap-3"><div className="w-5 h-5 bg-rose-100 border-2 border-rose-400 rounded-md" /><span className="text-xs font-black text-gray-900">Incompleto</span></div>
         </div>
       </div>
     </div>
@@ -801,49 +808,49 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
   return (
     <div className="flex flex-col h-[65vh] space-y-4">
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-        {messages.length === 0 && <div className="text-center p-10 space-y-2"><div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-400"><MessageCircle size={32} /></div><p className="text-sm text-gray-400 font-medium">Inizia a parlare con Luce ✨</p></div>}
+        {messages.length === 0 && <div className="text-center p-10 space-y-3"><div className="w-20 h-20 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-500"><MessageCircle size={40} strokeWidth={2.5} /></div><p className="text-base text-gray-900 font-black tracking-tight">Inizia a parlare con Luce ✨</p></div>}
         {messages.map((m: any, i: number) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`p-4 rounded-[1.8rem] text-sm max-w-[85%] ${m.role === 'user' ? 'bg-rose-400 text-white shadow-lg' : 'bg-white border border-rose-50 shadow-sm text-gray-700'}`}>{m.content}</div>
+            <div className={`p-5 rounded-[2rem] text-[15px] font-bold max-w-[85%] leading-snug shadow-sm ${m.role === 'user' ? 'bg-rose-500 text-white' : 'bg-white border-2 border-rose-50 text-gray-900'}`}>{m.content}</div>
           </div>
         ))}
-        {isTyping && <div className="text-rose-300 text-[10px] animate-pulse font-bold uppercase tracking-widest px-4">Luce sta pensando...</div>}
+        {isTyping && <div className="text-rose-600 text-[11px] animate-pulse font-black uppercase tracking-widest px-4">Luce sta scrivendo...</div>}
       </div>
-      <div className="flex gap-2 bg-white p-2 rounded-full border shadow-lg items-center mt-auto">
-        <button onClick={onToggleLive} className={`p-3 rounded-full transition-all ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
-        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-sm bg-transparent outline-none px-3" />
-        <button onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
+      <div className="flex gap-2 bg-white p-2 rounded-full border-2 border-rose-100 shadow-xl items-center mt-auto">
+        <button onClick={onToggleLive} className={`p-4 rounded-full transition-all ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-lg' : 'bg-rose-50 text-rose-500'}`}>{isLiveActive ? <MicOff size={22} strokeWidth={2.5} /> : <Mic size={22} strokeWidth={2.5} />}</button>
+        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-[15px] font-bold bg-transparent outline-none px-3 text-gray-900" />
+        <button onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} className="p-4 bg-rose-500 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={22} strokeWidth={2.5} /></button>
       </div>
     </div>
   );
 };
 
 const MealSelector: React.FC<any> = ({ onSelect, onCancel, isBonusAvailable, mealId }) => (
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[60] flex items-end p-4 animate-in fade-in">
-    <div className="w-full bg-white rounded-[3rem] p-8 space-y-6 animate-in slide-in-from-bottom duration-300 shadow-2xl border-t border-rose-100">
-      <div className="text-center space-y-2"><h3 className="font-bold text-xl text-gray-800">Cura il tuo Pasto</h3><p className="text-xs text-gray-400">Ogni pasto è un atto di gentilezza.</p></div>
-      <div className="grid gap-4">
-        <button onClick={() => onSelect(mealId, 'regular')} className="w-full p-6 bg-emerald-50 text-emerald-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-emerald-100 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={24} /></button>
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[60] flex items-end p-4 animate-in fade-in">
+    <div className="w-full bg-white rounded-[3.5rem] p-10 space-y-8 animate-in slide-in-from-bottom duration-300 shadow-[0_-20px_50px_rgba(0,0,0,0.1)]">
+      <div className="text-center space-y-3"><h3 className="font-black text-2xl text-gray-900 tracking-tight">Cura il tuo Pasto</h3><p className="text-sm text-gray-600 font-bold">Ogni scelta è un passo verso il benessere.</p></div>
+      <div className="grid gap-5">
+        <button onClick={() => onSelect(mealId, 'regular')} className="w-full p-7 bg-emerald-50 text-emerald-900 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 border-emerald-200 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={28} strokeWidth={3} /></button>
         <button 
           onClick={() => isBonusAvailable && onSelect(mealId, 'bonus')} 
           disabled={!isBonusAvailable}
-          className={`w-full p-6 rounded-[1.8rem] font-bold flex justify-between items-center border transition-all ${isBonusAvailable ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100' : 'bg-gray-50 text-gray-300 border-gray-100 opacity-50 cursor-not-allowed'}`}>
-          Usa Bonus <Star size={24} className={isBonusAvailable ? "text-amber-400" : "text-gray-200"} />
+          className={`w-full p-7 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 transition-all ${isBonusAvailable ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100' : 'bg-gray-50 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed'}`}>
+          Usa Bonus <Star size={28} strokeWidth={2.5} fill={isBonusAvailable ? "currentColor" : "none"} />
         </button>
-        <button onClick={() => onSelect(mealId, 'ko')} className="w-full p-6 bg-rose-50 text-rose-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-rose-100 hover:bg-rose-100 transition-colors">Pasto Saltato / KO <XCircle size={24} /></button>
-        {!isBonusAvailable && <p className="text-[10px] text-center text-rose-400 font-bold uppercase tracking-wider">Bonus già utilizzato per questa settimana ✨</p>}
+        <button onClick={() => onSelect(mealId, 'ko')} className="w-full p-7 bg-rose-50 text-rose-900 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 border-rose-200 hover:bg-rose-100 transition-colors">Pasto Saltato / KO <XCircle size={28} strokeWidth={2.5} /></button>
+        {!isBonusAvailable && <p className="text-[11px] text-center text-rose-600 font-black uppercase tracking-widest">Bonus settimanale già utilizzato ✨</p>}
       </div>
-      <button onClick={onCancel} className="w-full py-2 text-gray-400 font-bold hover:text-gray-600 transition-colors">Forse più tardi</button>
+      <button onClick={onCancel} className="w-full py-2 text-gray-500 font-black uppercase text-[12px] tracking-widest hover:text-gray-900 transition-colors">Più tardi</button>
     </div>
   </div>
 );
 
 const RewardModal: React.FC<any> = ({ onClaim }) => (
-  <div className="fixed inset-0 bg-rose-400/90 z-[100] flex items-center justify-center p-10 backdrop-blur-lg animate-in fade-in">
-    <div className="bg-white rounded-[3rem] p-12 text-center space-y-6 animate-in zoom-in duration-500 shadow-2xl">
-      <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={60} className="text-amber-400" /></div>
-      <div className="space-y-2"><h2 className="text-3xl font-bold text-gray-800">Che Splendore! ✨</h2><p className="text-gray-500 text-sm leading-relaxed">Hai concluso un'altra giornata del tuo percorso. Sei stato davvero coraggioso oggi.</p></div>
-      <button onClick={onClaim} className="w-full py-6 bg-rose-400 text-white rounded-[2rem] font-bold shadow-2xl active:scale-95 transition-all text-lg">Ricevi un Abbraccio Virtuale 💖</button>
+  <div className="fixed inset-0 bg-rose-500/95 z-[100] flex items-center justify-center p-10 backdrop-blur-xl animate-in fade-in">
+    <div className="bg-white rounded-[3.5rem] p-14 text-center space-y-8 animate-in zoom-in duration-500 shadow-2xl max-w-sm">
+      <div className="w-28 h-28 bg-amber-50 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={70} className="text-amber-500" strokeWidth={2} /></div>
+      <div className="space-y-3"><h2 className="text-3xl font-black text-gray-900 tracking-tight leading-tight">Che Splendore! ✨</h2><p className="text-gray-700 text-base font-bold leading-relaxed">Hai concluso un'altra giornata con coraggio e sincerità. Sii fiero di te.</p></div>
+      <button onClick={onClaim} className="w-full py-7 bg-rose-500 text-white rounded-[2.5rem] font-black shadow-2xl active:scale-95 transition-all text-xl uppercase tracking-wider">Un Abbraccio per Te 💖</button>
     </div>
   </div>
 );
