@@ -39,7 +39,9 @@ import {
   MicOff,
   Bell,
   BellOff,
-  Clock
+  Clock,
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 
 const MEALS: MealConfig[] = [
@@ -197,29 +199,59 @@ const getDynamicMotivation = (history: Record<string, DaySummary>, name: string)
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
   const [isSaving, setIsSaving] = useState(false);
+  const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('checking');
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     return localStorage.getItem('luce_notifications_enabled') === 'true';
   });
   const [overdueMeal, setOverdueMeal] = useState<MealConfig | null>(null);
   
   const [user, setUser] = useState<UserState>(() => {
-    const saved = localStorage.getItem('luce_user_state');
-    const defaultState: UserState = {
-      streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
-    };
-    if (!saved) return defaultState;
-    const parsed = JSON.parse(saved);
-    const todayStr = new Date().toDateString();
-    if (parsed.lastCheckIn !== todayStr) {
-      return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: parsed.history || {}, streak: calculateDailyStreak(parsed.history || {}), weeklyStreak: calculateWeeklyStreak(parsed.history || {}) };
+    try {
+      const saved = localStorage.getItem('luce_user_state');
+      const defaultState: UserState = {
+        streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
+      };
+      if (!saved) return defaultState;
+      const parsed = JSON.parse(saved);
+      const todayStr = new Date().toDateString();
+      if (parsed.lastCheckIn !== todayStr) {
+        return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: parsed.history || {}, streak: calculateDailyStreak(parsed.history || {}), weeklyStreak: calculateWeeklyStreak(parsed.history || {}) };
+      }
+      return parsed;
+    } catch (e) {
+      console.error("Storage Error:", e);
+      return { streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {} };
     }
-    return parsed;
   });
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
+
+  // AI Status Check Effect
+  useEffect(() => {
+    const checkKey = async () => {
+      // Direct access check
+      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        setAiStatus('ok');
+      } else {
+        // Some environments might not expose process.env in a standard way
+        try {
+          // If we can initialize the SDK, we consider it at least configured
+          const testAi = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+          if (process.env.API_KEY) {
+            setAiStatus('ok');
+          } else {
+            setAiStatus('error');
+          }
+        } catch (e) {
+          setAiStatus('error');
+        }
+      }
+    };
+    checkKey();
+  }, []);
 
   // Live API States
   const [isLiveActive, setIsLiveActive] = useState(false);
@@ -320,7 +352,7 @@ const App: React.FC = () => {
       return;
     }
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -394,26 +426,16 @@ const App: React.FC = () => {
     setUser(prev => {
       const d = new Date(dk);
       const bonusUsedInOtherDays = isBonusUsedInWeekInternal(d, prev.history, {}, dk);
-      
       const isCompleted = s.status !== 'regular' 
         ? true 
         : (s.mealsCount === 5 && (!s.hasBonus || !bonusUsedInOtherDays));
-        
       const updatedSummary = { ...s, isCompleted };
       const newHistory = { ...prev.history, [dk]: updatedSummary };
-      
       let newDailyMeals = prev.dailyMeals;
       if (dk === getLocalDateKey()) {
         newDailyMeals = s.meals || {};
       }
-
-      return {
-        ...prev,
-        history: newHistory,
-        dailyMeals: newDailyMeals,
-        streak: calculateDailyStreak(newHistory),
-        weeklyStreak: calculateWeeklyStreak(newHistory)
-      };
+      return { ...prev, history: newHistory, dailyMeals: newDailyMeals, streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
   };
 
@@ -435,6 +457,7 @@ const App: React.FC = () => {
         {view === 'dashboard' && (
           <Dashboard 
             user={user} 
+            aiStatus={aiStatus}
             onOpenMealSelector={(id) => setMealToSelect(id)} 
             onCloseDay={() => setView('checkin')} 
             onReopenDay={() => setUser(prev => ({ ...prev, isDayClosed: false }))} 
@@ -454,18 +477,18 @@ const App: React.FC = () => {
       {showReward && <RewardModal onClaim={() => { setUser(prev => ({ ...prev, rewardClaimed: true })); setShowReward(false); sendMessage("Grazie per il premio! 💖", true); }} />}
 
       <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
-        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 ${view === 'calendar' ? 'text-gray-800' : 'text-gray-300'}`}><Calendar size={28} /></button>
+        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800' : 'text-gray-300 hover:text-gray-400'}`}><Calendar size={28} /></button>
         <div className="relative -top-6">
-          <button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white ${view === 'dashboard' ? 'bg-rose-400' : 'bg-gray-300'}`}><Sun size={32} /></button>
+          <button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300'}`}><Sun size={32} /></button>
         </div>
-        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 ${view === 'chat' ? 'text-gray-800' : 'text-gray-300'}`}><MessageCircle size={28} /></button>
+        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800' : 'text-gray-300 hover:text-gray-400'}`}><MessageCircle size={28} /></button>
       </nav>
     </div>
   );
 };
 
 const Dashboard: React.FC<any> = ({ 
-  user, onOpenMealSelector, onCloseDay, onReopenDay, isWeeklyBonusUsed,
+  user, aiStatus, onOpenMealSelector, onCloseDay, onReopenDay, isWeeklyBonusUsed,
   notificationsEnabled, onRequestNotifications, onDisableNotifications, overdueMeal
 }) => {
   const completedCount = MEALS.filter(m => user.dailyMeals[m.id]).length;
@@ -473,7 +496,7 @@ const Dashboard: React.FC<any> = ({
   const motivation = useMemo(() => getDynamicMotivation(user.history, user.name), [user.history, user.name]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-6">
+    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
       {overdueMeal && (
         <div className="bg-amber-100 border-2 border-amber-200 p-4 rounded-[2rem] flex items-center gap-4 animate-bounce-gentle shadow-lg">
           <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-amber-500 shadow-sm shrink-0"><Clock size={24} /></div>
@@ -487,14 +510,14 @@ const Dashboard: React.FC<any> = ({
         <div className="mt-4 border-b-2 border-rose-100 pb-2 w-full"><p className="text-[12px] text-gray-900 font-extrabold uppercase tracking-wide">OGGI È {todayFormatted}</p></div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-indigo-50 p-6 rounded-[2rem] flex flex-col items-center text-center justify-center min-h-[160px] border border-indigo-100 relative"><Trophy className="text-indigo-500 mb-1" size={32} /><span className="text-4xl font-bold text-indigo-900">{user.weeklyStreak}</span><span className="text-[10px] uppercase tracking-widest text-indigo-500 font-extrabold">Settimane</span></div>
-        <div className={`p-6 rounded-[2rem] flex flex-col items-center text-center justify-center min-h-[160px] border ${isWeeklyBonusUsed ? 'bg-amber-50 border-amber-100' : 'bg-[#ECFDF5] border-emerald-100'}`}><Heart className={`size-[32px] mb-1 ${isWeeklyBonusUsed ? 'text-amber-500 fill-amber-500' : 'text-[#10B981] fill-[#10B981]'}`} /><span className={`text-xl font-bold ${isWeeklyBonusUsed ? 'text-amber-600' : 'text-[#10B981]'}`}>{isWeeklyBonusUsed ? 'Utilizzato' : 'Disponibile'}</span><span className={`text-[10px] uppercase tracking-widest font-extrabold ${isWeeklyBonusUsed ? 'text-amber-500' : 'text-[#10B981]'}`}>Bonus</span></div>
+        <div className="bg-indigo-50 p-6 rounded-[2rem] flex flex-col items-center text-center justify-center min-h-[160px] border border-indigo-100 relative shadow-sm"><Trophy className="text-indigo-500 mb-1" size={32} /><span className="text-4xl font-bold text-indigo-900">{user.weeklyStreak}</span><span className="text-[10px] uppercase tracking-widest text-indigo-500 font-extrabold">Settimane</span></div>
+        <div className={`p-6 rounded-[2rem] flex flex-col items-center text-center justify-center min-h-[160px] border shadow-sm ${isWeeklyBonusUsed ? 'bg-amber-50 border-amber-100' : 'bg-[#ECFDF5] border-emerald-100'}`}><Heart className={`size-[32px] mb-1 ${isWeeklyBonusUsed ? 'text-amber-500 fill-amber-500' : 'text-[#10B981] fill-[#10B981]'}`} /><span className={`text-xl font-bold ${isWeeklyBonusUsed ? 'text-amber-600' : 'text-[#10B981]'}`}>{isWeeklyBonusUsed ? 'Utilizzato' : 'Disponibile'}</span><span className={`text-[10px] uppercase tracking-widest font-extrabold ${isWeeklyBonusUsed ? 'text-amber-500' : 'text-[#10B981]'}`}>Bonus</span></div>
       </div>
       <div className="bg-[#F3F4F6]/50 p-6 rounded-[2.5rem] space-y-4 shadow-inner border border-gray-100">
         <div className="flex justify-between items-center mb-1"><h3 className="font-bold text-gray-700 flex items-center gap-2"><Sun className="text-amber-400" size={20} /> I Tuoi Pasti</h3><span className="text-[10px] font-bold text-rose-400 bg-rose-50 px-3 py-1 rounded-full">{completedCount}/5</span></div>
         <div className="space-y-3">
           {MEALS.map((meal) => (
-            <button key={meal.id} onClick={() => !user.isDayClosed && onOpenMealSelector(meal.id)} disabled={user.isDayClosed} className={`w-full flex items-center justify-between p-4 rounded-3xl transition-all bg-white ${user.isDayClosed ? 'opacity-90' : 'active:scale-95 shadow-sm'}`}>
+            <button key={meal.id} onClick={() => !user.isDayClosed && onOpenMealSelector(meal.id)} disabled={user.isDayClosed} className={`w-full flex items-center justify-between p-4 rounded-3xl transition-all bg-white ${user.isDayClosed ? 'opacity-90' : 'active:scale-95 shadow-sm hover:shadow-md'}`}>
               <div className="flex items-center gap-4 text-left">
                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-gray-50/50">
                   {meal.icon === 'coffee' && <Coffee size={24} className="text-gray-400" />}
@@ -517,6 +540,18 @@ const Dashboard: React.FC<any> = ({
           </div>
         )}
       </div>
+
+      {/* AI System Status Badge */}
+      <div className="flex justify-center pt-8 opacity-60">
+        <div className={`px-4 py-2 rounded-full border flex items-center gap-2 transition-all duration-500 ${aiStatus === 'ok' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : aiStatus === 'checking' ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
+          <div className={`w-2 h-2 rounded-full animate-pulse ${aiStatus === 'ok' ? 'bg-emerald-500' : aiStatus === 'checking' ? 'bg-amber-500' : 'bg-rose-500'}`} />
+          <span className="text-[10px] font-bold uppercase tracking-widest">
+            {aiStatus === 'ok' ? 'Sistema Luce Online' : aiStatus === 'checking' ? 'Verifica Sistema...' : 'Luce Offline (API Key?)'}
+          </span>
+          {aiStatus === 'ok' ? <ShieldCheck size={12} /> : aiStatus === 'error' ? <AlertTriangle size={12} /> : <Loader2 size={12} className="animate-spin" />}
+        </div>
+      </div>
+
       <style>{`@keyframes bounce-gentle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } } .animate-bounce-gentle { animation: bounce-gentle 2s ease-in-out infinite; }`}</style>
     </div>
   );
@@ -639,7 +674,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
     const lastDay = new Date(year, month + 1, 0).getDate();
     for (let i = 1; i <= lastDay; i++) days.push(new Date(year, month, i));
     
-    // Trailing padding from next month - FIXED LOGIC
     let trailingCount = 1;
     while (days.length % 7 !== 0) {
       days.push(new Date(year, month + 1, trailingCount++));
@@ -647,7 +681,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
     return days;
   }, [currentDate]);
 
-  // Group days by weeks for the 8th column logic
   const weeks = useMemo(() => {
     const w = [];
     for (let i = 0; i < daysInMonth.length; i += 7) {
@@ -765,7 +798,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
                 </button>
               );
             })}
-            {/* Week Result Column */}
             <div className="flex items-center justify-center">
               {(() => {
                 const res = calculateWeekResult(week);
@@ -779,34 +811,15 @@ const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
         ))}
       </div>
 
-      {/* Legend Section */}
       <div className="bg-white/60 p-5 rounded-[2rem] border border-gray-100 shadow-sm mt-8 animate-in slide-in-from-bottom duration-500">
         <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Info size={12} /> Legenda Colori</h4>
         <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-600">Pasti Regolari</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-amber-400 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-600">Con Bonus (Sgarro)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-indigo-400 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-600">In Ferie</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-slate-400 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-600">Malattia</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-rose-400 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-600">Incompleto</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-transparent border border-gray-200 rounded-full" />
-            <span className="text-[11px] font-bold text-gray-400 italic">In corso...</span>
-          </div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Pasti Regolari</span></div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-amber-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Con Bonus (Sgarro)</span></div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-indigo-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">In Ferie</span></div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-slate-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Malattia</span></div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-rose-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Incompleto</span></div>
+          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-transparent border border-gray-200 rounded-full" /><span className="text-[11px] font-bold text-gray-400 italic">In corso...</span></div>
         </div>
       </div>
 
@@ -820,7 +833,6 @@ const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
               </div>
               <button onClick={() => setSelectedDayInfo(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={24} /></button>
             </div>
-
             {isEditing && editForm ? (
               <div className="space-y-4 text-left">
                 <div className="flex gap-2 mb-4">
