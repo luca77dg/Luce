@@ -242,10 +242,23 @@ const App: React.FC = () => {
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
 
-  const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
+
+  // iOS Wake Lock per AudioContext
+  useEffect(() => {
+    const unlockAudio = () => {
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass();
+        ctx.resume().then(() => ctx.close());
+      }
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+    window.addEventListener('touchstart', unlockAudio);
+    return () => window.removeEventListener('touchstart', unlockAudio);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
@@ -299,7 +312,10 @@ const App: React.FC = () => {
 
   const toggleLive = async () => {
     if (isLiveActive) {
-      sessionRef.current?.close();
+      if (sessionRef.current) {
+        sessionRef.current.close();
+        sessionRef.current = null;
+      }
       setIsLiveActive(false);
       return;
     }
@@ -308,31 +324,30 @@ const App: React.FC = () => {
     try {
       const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
       if (!apiKey) {
-        setAiStatus('error');
+        alert("Configurazione API mancante.");
         setIsLiveLoading(false);
         return;
       }
 
-      // iOS Check: Navigator mediaDevices might be restricted in some PWA contexts
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("L'accesso al microfono non è disponibile in questa modalità. Riprova da Safari.");
+        alert("Microfono non supportato in questo browser.");
         setIsLiveLoading(false);
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey: apiKey });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => {
+        alert("Accesso al microfono negato. Controlla le impostazioni di Safari.");
+        throw err;
+      });
       
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       const inputCtx = new AudioContextClass({ sampleRate: 16000 });
       const outputCtx = new AudioContextClass({ sampleRate: 24000 });
 
-      // iOS REQUIREMENT: Resume AudioContext from user gesture
       if (inputCtx.state === 'suspended') await inputCtx.resume();
       if (outputCtx.state === 'suspended') await outputCtx.resume();
 
-      outputAudioContextRef.current = outputCtx;
-      
+      const ai = new GoogleGenAI({ apiKey });
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
@@ -349,7 +364,6 @@ const App: React.FC = () => {
             scriptProcessor.connect(inputCtx.destination);
             setIsLiveActive(true);
             setIsLiveLoading(false);
-            setAiStatus('ok');
           },
           onmessage: async (msg) => {
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -364,11 +378,14 @@ const App: React.FC = () => {
           onclose: () => {
             setIsLiveActive(false);
             setIsLiveLoading(false);
+            inputCtx.close();
+            outputCtx.close();
           },
-          onerror: () => {
+          onerror: (e) => {
+            console.error("Live Error:", e);
             setIsLiveActive(false);
             setIsLiveLoading(false);
-            setAiStatus('error');
+            alert("Errore di connessione audio. Riprova.");
           }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
@@ -378,7 +395,6 @@ const App: React.FC = () => {
       console.error(e);
       setIsLiveActive(false);
       setIsLiveLoading(false);
-      setAiStatus('error');
     }
   };
 
@@ -386,11 +402,8 @@ const App: React.FC = () => {
     const dk = getLocalDateKey();
     setUser(prev => {
       const mealsToUse = data.meals || prev.dailyMeals;
-      const mealsValues = Object.values(mealsToUse);
-      const mealsCount = mealsValues.filter(v => v !== null).length;
-      const hasBonus = mealsValues.some(v => v === 'bonus');
       const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), dk);
-      const summary: DaySummary = { ...prev.history[dk], date: dk, isCompleted, mood: data.mood, status: data.status, mealsCount, hasBonus, meals: mealsToUse };
+      const summary: DaySummary = { ...prev.history[dk], date: dk, isCompleted, mood: data.mood, status: data.status, meals: mealsToUse };
       const newHistory = { ...prev.history, [dk]: summary };
       return { ...prev, history: newHistory, dailyMeals: mealsToUse, isDayClosed: true, lastCheckIn: new Date().toDateString(), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
@@ -676,26 +689,32 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
         ))}
         {isTyping && <div className="text-rose-600 text-[11px] animate-pulse font-black uppercase tracking-widest px-4">Luce sta scrivendo...</div>}
       </div>
-      <div className="flex gap-2 bg-white p-1.5 rounded-full border-2 border-rose-100 shadow-xl items-center mt-auto">
+      
+      {/* Barra della chat rifatta per evitare overlap su iPhone */}
+      <div className="relative flex items-center bg-white p-2 rounded-full border-2 border-rose-100 shadow-xl gap-2 mt-auto">
         <button 
+          type="button"
           onClick={onToggleLive} 
           disabled={isLiveLoading}
-          className={`flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full transition-all ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-lg' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-90'}`}
+          className={`flex-none w-12 h-12 flex items-center justify-center rounded-full transition-all ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-lg' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-95'}`}
         >
-          {isLiveLoading ? <Loader2 size={22} className="animate-spin" /> : isLiveActive ? <MicOff size={22} strokeWidth={2.5} /> : <Mic size={22} strokeWidth={2.5} />}
+          {isLiveLoading ? <Loader2 size={24} className="animate-spin" /> : isLiveActive ? <MicOff size={24} strokeWidth={2.5} /> : <Mic size={24} strokeWidth={2.5} />}
         </button>
+        
         <input 
           value={inp} 
           onChange={e => setInp(e.target.value)} 
           onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} 
           placeholder="Parla con Luce..." 
-          className="flex-1 min-w-0 text-[15px] font-bold bg-transparent outline-none px-2 text-gray-900 placeholder:text-gray-300" 
+          className="flex-1 min-w-0 text-[16px] font-bold bg-transparent outline-none px-2 text-gray-900 placeholder:text-gray-300 h-12" 
         />
+        
         <button 
+          type="button"
           onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} 
-          className="flex-shrink-0 w-12 h-12 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-90 transition-all"
+          className="flex-none w-12 h-12 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-95 transition-all"
         >
-          <Send size={22} strokeWidth={2.5} />
+          <Send size={24} strokeWidth={2.5} />
         </button>
       </div>
     </div>
