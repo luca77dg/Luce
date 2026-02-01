@@ -179,7 +179,7 @@ const getDynamicMotivation = (history: Record<string, DaySummary>, name: string)
   const dates = Object.keys(history).sort().reverse();
   const last7Dates = dates.slice(0, 7);
   const last7Days = last7Dates.map(d => history[d]);
-  if (dates.length === 0) return { title: `Benvenutə, ${name} ✨`, subtitle: "Iniziamo questo viaggio insieme, con gentilezza." };
+  if (dates.length === 0) return { title: `Benvenuto, ${name} ✨`, subtitle: "Iniziamo questo viaggio insieme, con gentilezza." };
   const completedCount = last7Days.filter(d => isDaySuccessful(d)).length;
   if (last7Days[0]?.status === 'sick' || last7Days[0]?.status === 'holiday') return { title: `${name}, pensa al riposo 🍵`, subtitle: "Il tuo corpo ha bisogno di energia per guarire." };
   if (completedCount >= 6) return { title: `Stai splendendo, ${name}! 🌟`, subtitle: "La tua costanza è d'ispirazione. Continua così." };
@@ -222,7 +222,7 @@ const App: React.FC = () => {
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
 
-  // AI Status Check Effect - Robust to prevent ReferenceError
+  // AI Status Check Effect
   useEffect(() => {
     const checkKey = async () => {
       try {
@@ -231,23 +231,19 @@ const App: React.FC = () => {
           setAiStatus('ok');
         } else {
           setAiStatus('error');
-          console.warn("API_KEY missing from environment variables.");
         }
       } catch (e) {
         setAiStatus('error');
-        console.error("AI Status Check failed:", e);
       }
     };
     checkKey();
   }, []);
 
-  // Live API Refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  // Fix: Add missing lastNotifiedMealId ref to track notifications
   const lastNotifiedMealId = useRef<string | null>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
 
@@ -532,12 +528,11 @@ const Dashboard: React.FC<any> = ({
         )}
       </div>
 
-      {/* AI System Status Badge */}
       <div className="flex justify-center pt-8 opacity-60">
         <div className={`px-4 py-2 rounded-full border flex items-center gap-2 transition-all duration-500 ${aiStatus === 'ok' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : aiStatus === 'checking' ? 'bg-amber-50 border-amber-100 text-amber-600' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
           <div className={`w-2 h-2 rounded-full animate-pulse ${aiStatus === 'ok' ? 'bg-emerald-500' : aiStatus === 'checking' ? 'bg-amber-500' : 'bg-rose-500'}`} />
           <span className="text-[10px] font-bold uppercase tracking-widest">
-            {aiStatus === 'ok' ? 'Sistema Luce Online' : aiStatus === 'checking' ? 'Verifica Sistema...' : 'Luce Offline (API Key?)'}
+            {aiStatus === 'ok' ? 'Sistema Luce Online' : aiStatus === 'checking' ? 'Verifica Sistema...' : 'Luce Offline'}
           </span>
           {aiStatus === 'ok' ? <ShieldCheck size={12} /> : aiStatus === 'error' ? <AlertTriangle size={12} /> : <Loader2 size={12} className="animate-spin" />}
         </div>
@@ -548,342 +543,308 @@ const Dashboard: React.FC<any> = ({
   );
 };
 
-const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActive, onToggleLive }) => {
-  const [input, setInput] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [messages, isTyping]);
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); if (input.trim()) { onSendMessage(input); setInput(''); } };
-  return (
-    <div className="flex flex-col h-full space-y-4 animate-in fade-in pb-4">
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-1">
-        {messages.length === 0 && (
-          <div className="text-center py-16 space-y-4">
-            <div className="w-20 h-20 bg-rose-50 rounded-[2rem] flex items-center justify-center mx-auto text-rose-400 border border-rose-100 shadow-inner"><Sparkles size={40} /></div>
-            <div className="space-y-2"><p className="text-gray-800 font-bold text-lg text-rose-500">Ciao, sono Luce ✨</p><p className="text-gray-400 text-sm italic px-8">Sono qui per ascoltarti senza giudizio. Come va oggi?</p></div>
-          </div>
-        )}
-        {messages.map((m: any, i: number) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${m.role === 'user' ? 'bg-rose-400 text-white rounded-tr-none' : 'bg-gray-100 text-gray-800 border border-gray-200 rounded-tl-none'}`}>{m.content}</div>
-          </div>
-        ))}
-        {isTyping && <div className="flex gap-1.5 items-center bg-gray-100 p-4 rounded-3xl w-fit border border-gray-200 rounded-tl-none"><div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce" /><div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce [animation-delay:0.2s]" /><div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce [animation-delay:0.4s]" /></div>}
-      </div>
-      <div className="flex flex-col gap-3">
-        {isLiveActive && (<div className="bg-rose-50 p-3 rounded-2xl border border-rose-100 animate-pulse flex items-center justify-center gap-2"><div className="w-2 h-2 bg-rose-400 rounded-full" /><span className="text-[10px] font-bold text-rose-400 uppercase tracking-widest">Luce ti sta ascoltando...</span></div>)}
-        <form onSubmit={handleSubmit} className="flex gap-2 bg-white p-2.5 rounded-[1.5rem] border border-gray-200 items-center shadow-sm focus-within:border-rose-200 transition-colors">
-          <button type="button" onClick={onToggleLive} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Scrivi a Luce..." className="flex-1 px-1 outline-none text-sm h-10 bg-transparent" />
-          <button type="submit" disabled={!input.trim()} className="w-11 h-11 bg-rose-400 rounded-2xl flex items-center justify-center text-white active:scale-95 disabled:opacity-30 shadow-lg"><Send size={20} /></button>
-        </form>
-      </div>
-    </div>
-  );
-};
+// --- FIX: Implementation of missing helper functions and components ---
 
-const finalizeDay = async (data: CheckInData, setUser: any, setView: any, setShowReward: any, sendMessage: any, user: UserState) => {
+const finalizeDay = (
+  data: CheckInData, 
+  setUser: React.Dispatch<React.SetStateAction<UserState>>, 
+  setView: (v: 'dashboard' | 'checkin' | 'chat' | 'calendar') => void,
+  setShowReward: (v: boolean) => void,
+  sendMessage: (text: string, silent?: boolean) => void,
+  user: UserState
+) => {
   const now = new Date();
   const dateKey = getLocalDateKey(now);
-  let meals = { ...user.dailyMeals };
-  if (data.status === 'regular') MEALS.forEach(m => { if (!meals[m.id]) meals[m.id] = 'regular'; });
-  const count = Object.values(meals).filter(Boolean).length;
-  const hasBonus = Object.values(meals).some(v => v === 'bonus');
-  const bonusUsedWeek = isBonusUsedInWeekInternal(now, user.history, {}, dateKey);
-  const completed = count === MEALS.length && (!hasBonus || !bonusUsedWeek);
-  setUser((prev: any) => {
-    const summary: DaySummary = { date: dateKey, isCompleted: completed, mealsCount: count, hasBonus, mood: data.mood, meals, status: data.status };
+  
+  setUser(prev => {
+    const mealsCount = Object.values(prev.dailyMeals).filter(Boolean).length;
+    const hasBonusToday = Object.values(prev.dailyMeals).some(v => v === 'bonus');
+    const bonusAlreadyUsedThisWeek = isBonusUsedInWeekInternal(now, prev.history, {}, dateKey);
+    const isCompleted = (data.status === 'holiday' || data.status === 'sick')
+      ? true 
+      : (mealsCount === MEALS.length && (!hasBonusToday || !bonusAlreadyUsedThisWeek));
+    
+    const summary: DaySummary = {
+      date: dateKey,
+      isCompleted,
+      mealsCount,
+      hasBonus: hasBonusToday,
+      mood: data.mood,
+      meals: { ...prev.dailyMeals },
+      status: data.status || 'regular'
+    };
+    
     const newHistory = { ...prev.history, [dateKey]: summary };
-    return { ...prev, isDayClosed: true, streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory), lastCheckIn: now.toDateString(), history: newHistory };
+    return {
+      ...prev,
+      history: newHistory,
+      isDayClosed: true,
+      lastCheckIn: now.toDateString(),
+      streak: calculateDailyStreak(newHistory),
+      weeklyStreak: calculateWeeklyStreak(newHistory)
+    };
   });
-  setView('calendar');
-  if (completed || data.status !== 'regular') setShowReward(true);
-  sendMessage(`Ho chiuso la giornata come ${data.status}. Mi sento ${data.mood}. Riflessione: ${data.emotions}`, true);
+  
+  setView('dashboard');
+  setShowReward(true);
+  
+  const statusMsg = data.status === 'sick' ? "Oggi non sono statə bene" : data.status === 'holiday' ? "Oggi ero in vacanza" : "Ho concluso la mia giornata";
+  sendMessage(`${statusMsg}. Mi sento ${data.mood} e ho provato ${data.emotions || 'calma'}.`, false);
 };
 
-const MealSelector: React.FC<any> = ({ mealToSelect, isWeeklyBonusUsed, onSelect, onCancel, userMeals }) => (
-  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
-    <div className="bg-white w-full max-w-md rounded-t-[3rem] p-8 space-y-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
-      <div className="flex justify-between items-center"><h3 className="text-xl font-bold text-gray-800">Com'è andato il pasto?</h3><button onClick={onCancel} className="p-2 text-gray-400"><X size={24} /></button></div>
-      <div className="grid grid-cols-1 gap-4">
-        <button onClick={() => onSelect(mealToSelect, 'regular')} className="flex items-center gap-4 p-5 rounded-3xl bg-emerald-50 border-2 border-emerald-100 text-emerald-700 active:scale-95 transition-transform"><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center"><Check className="text-emerald-500" size={24} /></div><div className="text-left font-bold">Pasto Regolare</div></button>
-        <button onClick={() => onSelect(mealToSelect, 'bonus')} disabled={isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus'} className={`flex items-center gap-4 p-5 rounded-3xl border-2 transition-all ${isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' ? 'bg-gray-50 opacity-50 grayscale' : 'bg-amber-50 border-amber-100 text-amber-700 active:scale-95'}`}><div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center"><Star className={isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' ? 'text-gray-300' : 'text-amber-500'} size={24} /></div><div className="text-left"><div className="font-bold">Bonus (Sgarro)</div>{isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' && <div className="text-[10px] font-medium text-amber-600/60 leading-tight">Già utilizzato</div>}</div></button>
-        <button onClick={() => onSelect(mealToSelect, null)} className="py-2 text-gray-400 text-sm">Rimuovi</button>
-      </div>
-    </div>
-  </div>
-);
-
-const RewardModal: React.FC<any> = ({ onClaim }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-    <div className="bg-white rounded-3xl p-8 text-center space-y-4 shadow-2xl max-w-xs animate-in zoom-in-95">
-      <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto text-amber-500"><Trophy size={48} className="animate-bounce" /></div>
-      <h2 className="text-2xl font-bold text-gray-800">Traguardo! 🎉</h2>
-      <p className="text-gray-600 text-sm">Luce è fiera di te!</p>
-      <button onClick={onClaim} className="w-full bg-rose-500 text-white py-4 rounded-2xl font-bold shadow-lg">Accetta il Premio 💖</button>
-    </div>
-  </div>
-);
-
-const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, isSaving, initialData }) => {
+const CheckInForm: React.FC<{ onSubmit: (data: any) => void; onCancel: () => void; isSaving: boolean; initialData?: DaySummary }> = ({ onSubmit, onCancel, isSaving, initialData }) => {
   const [mood, setMood] = useState(initialData?.mood || 'felice');
-  const [emotions, setEmotions] = useState(''); 
+  const [emotions, setEmotions] = useState('');
   const [status, setStatus] = useState<'regular' | 'holiday' | 'sick'>(initialData?.status || 'regular');
+
   return (
-    <div className="space-y-8 pb-8">
-      <div className="text-center space-y-2"><h2 className="text-3xl font-bold text-gray-700">Riflessione</h2><p className="text-sm text-gray-400 italic">Prenditi un momento per ascoltarti...</p></div>
-      <div className="flex gap-2">
-        <button onClick={() => setStatus('regular')} className={`flex-1 p-4 rounded-3xl border-2 font-bold flex flex-col items-center gap-2 transition-all ${status === 'regular' ? 'bg-rose-50 border-rose-200 text-rose-600 shadow-md' : 'bg-white border-gray-50 text-gray-300'}`}><CheckCircle2 size={24}/><span className="text-xs">Regolare</span></button>
-        <button onClick={() => setStatus('holiday')} className={`flex-1 p-4 rounded-3xl border-2 font-bold flex flex-col items-center gap-2 transition-all ${status === 'holiday' ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-md' : 'bg-white border-gray-50 text-gray-300'}`}><Palmtree size={24}/><span className="text-xs">Ferie</span></button>
-        <button onClick={() => setStatus('sick')} className={`flex-1 p-4 rounded-3xl border-2 font-bold flex flex-col items-center gap-2 transition-all ${status === 'sick' ? 'bg-slate-100 border-slate-300 text-slate-600 shadow-md' : 'bg-white border-gray-50 text-gray-300'}`}><Thermometer size={24}/><span className="text-xs">Malattia</span></button>
+    <div className="space-y-6 pb-12 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold text-gray-800">Com'è andata oggi?</h2>
+        <p className="text-gray-500 text-sm">Prenditi un momento per riflettere con gentilezza.</p>
       </div>
-      <div className="flex justify-between px-2 bg-white/60 p-6 rounded-[2.5rem] border border-gray-100 shadow-sm items-center">
-        {[{ icon: Smile, label: 'felice', color: 'text-[#10B981]' }, { icon: Meh, label: 'neutrale', color: 'text-[#F59E0B]' }, { icon: Frown, label: 'triste', color: 'text-[#F43F5E]' }].map(({ icon: Icon, label, color }) => (
-          <button key={label} onClick={() => setMood(label)} className={`flex flex-col items-center gap-3 p-4 rounded-3xl transition-all ${mood === label ? 'bg-white scale-110 shadow-lg ring-1 ring-gray-0' : 'opacity-30'}`}><Icon size={44} className={color} /><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</span></button>
-        ))}
+
+      <div className="space-y-4">
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">Tipo di giornata</label>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'regular', label: 'Normale', icon: Sun },
+            { id: 'holiday', label: 'Vacanza', icon: Palmtree },
+            { id: 'sick', label: 'Malattia', icon: Thermometer },
+          ].map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setStatus(s.id as any)}
+              className={`p-4 rounded-3xl flex flex-col items-center gap-2 border-2 transition-all ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'border-gray-100 bg-white text-gray-400'}`}
+            >
+              <s.icon size={20} />
+              <span className="text-[10px] font-bold uppercase">{s.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <textarea value={emotions} onChange={(e) => setEmotions(e.target.value)} placeholder="Cosa porti nel cuore stasera?" className="w-full p-6 rounded-[2.5rem] border-2 border-gray-100 focus:border-rose-200 outline-none h-48 resize-none text-sm bg-white shadow-sm" />
-      <button onClick={() => onSubmit({ mood, emotions, status })} disabled={isSaving} className="w-full bg-[#1e293b] text-white py-5 rounded-[2rem] font-bold shadow-2xl flex items-center justify-center gap-2 text-lg">{isSaving ? <Loader2 className="animate-spin" size={24} /> : 'Salva ✨'}</button>
+
+      <div className="space-y-4">
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">Il tuo umore</label>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'felice', icon: Smile, color: 'text-emerald-500' },
+            { id: 'così così', icon: Meh, color: 'text-amber-500' },
+            { id: 'difficile', icon: Frown, color: 'text-rose-500' },
+          ].map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMood(m.id)}
+              className={`p-4 rounded-3xl flex flex-col items-center gap-2 border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50' : 'border-gray-100 bg-white'}`}
+            >
+              <m.icon size={28} className={m.color} />
+              <span className="text-[10px] font-bold uppercase text-gray-500">{m.id}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-400">Pensieri ed emozioni</label>
+        <textarea
+          value={emotions}
+          onChange={(e) => setEmotions(e.target.value)}
+          placeholder="Come ti senti veramente?"
+          className="w-full p-4 rounded-3xl border-2 border-gray-100 focus:border-rose-200 focus:ring-0 min-h-[120px] text-sm"
+        />
+      </div>
+
+      <div className="flex gap-4 pt-4">
+        <button onClick={onCancel} className="flex-1 py-4 rounded-3xl font-bold text-gray-400">Indietro</button>
+        <button
+          onClick={() => onSubmit({ mood, emotions, status })}
+          disabled={isSaving || !emotions.trim()}
+          className="flex-[2] bg-rose-400 text-white py-4 rounded-3xl font-bold shadow-lg shadow-rose-100 disabled:opacity-50"
+        >
+          {isSaving ? 'Salvataggio...' : 'Concludi Giornata'}
+        </button>
+      </div>
     </div>
   );
 };
 
-const CalendarView: React.FC<any> = ({ user, onUpdateDay }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDayInfo, setSelectedDayInfo] = useState<{ date: Date, summary: DaySummary | null } | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState<DaySummary | null>(null);
+const ChatView: React.FC<{ messages: ChatMessage[]; onSendMessage: (t: string) => void; isTyping: boolean; isLiveActive: boolean; onToggleLive: () => void }> = ({ messages, onSendMessage, isTyping, isLiveActive, onToggleLive }) => {
+  const [input, setInput] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const monthName = currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' });
-  
-  const daysInMonth = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayIdx = new Date(year, month, 1).getDay();
-    const leadingPadding = firstDayIdx === 0 ? 6 : firstDayIdx - 1;
-    const days = [];
-    for (let i = 0; i < leadingPadding; i++) days.push(new Date(year, month, -leadingPadding + i + 1));
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    for (let i = 1; i <= lastDay; i++) days.push(new Date(year, month, i));
-    
-    let trailingCount = 1;
-    while (days.length % 7 !== 0) {
-      days.push(new Date(year, month + 1, trailingCount++));
-    }
-    return days;
-  }, [currentDate]);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, isTyping]);
 
-  const weeks = useMemo(() => {
-    const w = [];
-    for (let i = 0; i < daysInMonth.length; i += 7) {
-      w.push(daysInMonth.slice(i, i + 7));
-    }
-    return w;
-  }, [daysInMonth]);
-
-  const handleDayClick = (date: Date) => {
-    const dk = getLocalDateKey(date);
-    const summary = user.history[dk] || null;
-    setSelectedDayInfo({ date, summary });
-    setIsEditing(false);
-  };
-
-  const startEditing = () => {
-    if (selectedDayInfo) {
-      setEditForm(selectedDayInfo.summary || {
-        date: getLocalDateKey(selectedDayInfo.date),
-        isCompleted: false,
-        mealsCount: 0,
-        hasBonus: false,
-        mood: 'felice',
-        meals: {},
-        status: 'regular'
-      });
-      setIsEditing(true);
-    }
-  };
-
-  const toggleMealInEdit = (mealId: string) => {
-    if (!editForm) return;
-    const current = editForm.meals?.[mealId];
-    let next: 'regular' | 'bonus' | null = current === null || current === undefined ? 'regular' : current === 'regular' ? 'bonus' : null;
-    const newMeals = { ...editForm.meals, [mealId]: next };
-    setEditForm({ ...editForm, meals: newMeals, mealsCount: Object.values(newMeals).filter(Boolean).length, hasBonus: Object.values(newMeals).some(v => v === 'bonus'), status: 'regular' });
-  };
-
-  const saveEdits = () => {
-    if (editForm && selectedDayInfo) {
-      onUpdateDay(editForm.date, editForm);
-      setSelectedDayInfo({ ...selectedDayInfo, summary: editForm });
-      setIsEditing(false);
-    }
-  };
-
-  const updateStatus = (newStatus: 'regular' | 'holiday' | 'sick') => {
-    setEditForm(prev => {
-      if (!prev) return null;
-      let nextMeals = { ...prev.meals };
-      if (newStatus === 'regular') {
-        MEALS.forEach(m => {
-          nextMeals[m.id] = 'regular';
-        });
-      }
-      const count = Object.values(nextMeals).filter(Boolean).length;
-      return { 
-        ...prev, 
-        status: newStatus, 
-        meals: nextMeals,
-        mealsCount: count,
-        hasBonus: Object.values(nextMeals).some(v => v === 'bonus'),
-        isCompleted: newStatus !== 'regular' || count === 5
-      };
-    });
-  };
-
-  const calculateWeekResult = (weekDays: Date[]) => {
-    const summaries = weekDays.map(d => user.history[getLocalDateKey(d)]);
-    const successes = summaries.filter(s => isDaySuccessful(s)).length;
-    const today = new Date();
-    const totalDaysPassed = weekDays.filter(d => d <= today).length;
-    
-    if (successes === 7) return 'perfect';
-    if (successes >= totalDaysPassed && successes > 0) return 'partial';
-    if (successes < totalDaysPassed) return 'failed';
-    return 'none';
+  const handleSend = () => {
+    if (!input.trim()) return;
+    onSendMessage(input);
+    setInput('');
   };
 
   return (
-    <div className="space-y-6 pb-12 relative animate-in fade-in">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-xl font-bold text-gray-800 capitalize">{monthName}</h2>
-        <div className="flex gap-2">
-          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 text-gray-400"><ChevronLeft size={20} /></button>
-          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 text-gray-400"><ChevronRight size={20} /></button>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-[repeat(7,1fr)_40px] gap-2 items-center">
-        {['L', 'M', 'M', 'G', 'V', 'S', 'D'].map(day => <div key={day} className="text-center text-[10px] font-bold text-gray-300 py-2 uppercase">{day}</div>)}
-        <div className="text-center"><TrendingUp size={14} className="mx-auto text-gray-300" /></div>
-        
-        {weeks.map((week, wIdx) => (
-          <React.Fragment key={`week-${wIdx}`}>
-            {week.map((date, dIdx) => {
-              const dk = getLocalDateKey(date);
-              const summary = user.history[dk];
-              const isToday = date.toDateString() === new Date().toDateString();
-              const isCurrentMonth = date.getMonth() === currentDate.getMonth();
-              let indicatorColor = 'bg-transparent';
-              if (summary) {
-                if (summary.status === 'holiday') indicatorColor = 'bg-indigo-400';
-                else if (summary.status === 'sick') indicatorColor = 'bg-slate-400';
-                else indicatorColor = summary.isCompleted ? (summary.hasBonus ? 'bg-amber-400' : 'bg-emerald-400') : 'bg-rose-400';
-              }
-              return (
-                <button 
-                  key={dk}
-                  onClick={() => handleDayClick(date)}
-                  className={`aspect-square border-2 rounded-2xl flex flex-col items-center justify-center transition-all active:scale-95 ${isCurrentMonth ? 'bg-white border-gray-100 shadow-sm' : 'bg-gray-50/20 border-transparent opacity-20'} ${isToday ? 'ring-2 ring-rose-300 ring-offset-2' : ''}`}
-                >
-                  <span className={`text-[13px] font-bold ${isCurrentMonth ? 'text-gray-800' : 'text-gray-400'}`}>{date.getDate()}</span>
-                  <div className={`w-1.5 h-1.5 ${indicatorColor} rounded-full mt-1 transition-colors`} />
-                </button>
-              );
-            })}
-            <div className="flex items-center justify-center">
-              {(() => {
-                const res = calculateWeekResult(week);
-                if (res === 'perfect') return <div className="w-7 h-7 bg-amber-100 rounded-lg flex items-center justify-center text-amber-500 shadow-sm animate-in zoom-in-50"><Sparkles size={16} /></div>;
-                if (res === 'partial') return <div className="w-7 h-7 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-400 shadow-sm animate-in zoom-in-50"><CheckCircle2 size={16} /></div>;
-                if (res === 'failed') return <div className="w-7 h-7 bg-rose-50 rounded-lg flex items-center justify-center text-rose-300 shadow-sm"><X size={14} /></div>;
-                return <div className="w-7 h-7 bg-gray-50/50 rounded-lg" />;
-              })()}
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-
-      <div className="bg-white/60 p-5 rounded-[2rem] border border-gray-100 shadow-sm mt-8 animate-in slide-in-from-bottom duration-500">
-        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Info size={12} /> Legenda Colori</h4>
-        <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-emerald-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Pasti Regolari</span></div>
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-amber-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Con Bonus (Sgarro)</span></div>
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-indigo-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">In Ferie</span></div>
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-slate-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Malattia</span></div>
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-rose-400 rounded-full" /><span className="text-[11px] font-bold text-gray-600">Incompleto</span></div>
-          <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 bg-transparent border border-gray-200 rounded-full" /><span className="text-[11px] font-bold text-gray-400 italic">In corso...</span></div>
-        </div>
-      </div>
-
-      {selectedDayInfo && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl max-w-sm w-full animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start">
-              <div className="text-left">
-                <h3 className="text-xl font-bold text-slate-800 capitalize">{selectedDayInfo.date.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</h3>
-                {!isEditing && <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mt-1">{selectedDayInfo.summary?.status === 'holiday' ? '🏖️ Ferie' : selectedDayInfo.summary?.status === 'sick' ? '🤒 Malattia' : selectedDayInfo.summary?.mood || 'Nessun dato'}</p>}
-              </div>
-              <button onClick={() => setSelectedDayInfo(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={24} /></button>
-            </div>
-            {isEditing && editForm ? (
-              <div className="space-y-4 text-left">
-                <div className="flex gap-2 mb-4">
-                  {(['regular', 'holiday', 'sick'] as const).map(s => (
-                    <button key={s} onClick={() => updateStatus(s)} className={`flex-1 p-3 rounded-2xl border-2 text-[11px] font-bold flex flex-col items-center gap-1 transition-all ${editForm.status === s ? 'bg-rose-50 border-rose-400 text-rose-600 scale-105 shadow-sm' : 'bg-white border-gray-100 text-gray-400 hover:bg-gray-50'}`}>
-                      {s === 'holiday' ? <Palmtree size={18}/> : s === 'sick' ? <Thermometer size={18}/> : <CheckCircle2 size={18}/>}
-                      {s === 'regular' ? 'Pasto' : s === 'holiday' ? 'Ferie' : 'Malato'}
-                    </button>
-                  ))}
-                </div>
-                {editForm.status === 'regular' && (
-                  <div className="space-y-2">
-                    {MEALS.map(meal => (
-                      <button key={meal.id} onClick={() => toggleMealInEdit(meal.id)} className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${editForm.meals?.[meal.id] === 'regular' ? 'bg-emerald-50 border-emerald-200 shadow-sm' : editForm.meals?.[meal.id] === 'bonus' ? 'bg-amber-50 border-amber-200 shadow-sm' : 'bg-white border-gray-100'}`}>
-                        <span className={`text-sm font-bold ${editForm.meals?.[meal.id] === 'regular' ? 'text-emerald-700' : editForm.meals?.[meal.id] === 'bonus' ? 'text-amber-700' : 'text-slate-700'}`}>{meal.label}</span>
-                        {editForm.meals?.[meal.id] === 'bonus' ? <Star size={20} className="text-amber-500 fill-amber-500" /> : editForm.meals?.[meal.id] === 'regular' ? <Check size={20} className="text-emerald-600 stroke-[3]" /> : <X size={18} className="text-gray-300" />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {editForm.status !== 'regular' && (
-                  <div className="bg-blue-50/50 p-6 rounded-3xl border border-blue-100 text-center space-y-2">
-                    <p className="text-sm font-bold text-blue-700">Giorno Speciale Selezionato ✨</p>
-                    <p className="text-[11px] text-blue-600/80 italic">Questa giornata sarà segnata come completata per la tua costanza. Pensa solo al tuo benessere!</p>
-                  </div>
-                )}
-                <div className="pt-4 space-y-2">
-                  <button onClick={saveEdits} className="w-full bg-slate-800 text-white py-4 rounded-3xl font-bold text-lg shadow-lg active:scale-95 transition-all">Salva Modifiche</button>
-                  <button onClick={() => setIsEditing(false)} className="w-full text-gray-400 font-bold text-sm py-2 text-center">Annulla</button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {selectedDayInfo.summary ? (
-                  <div className="bg-gray-50 p-6 rounded-[2rem] text-left space-y-3 border border-gray-100">
-                    <div className="flex justify-between items-center"><span className="text-sm text-gray-500">Stato:</span><span className="font-bold text-slate-800 capitalize">{selectedDayInfo.summary.status === 'holiday' ? '🏝️ Ferie' : selectedDayInfo.summary.status === 'sick' ? '🤒 Malattia' : '🍲 Regolare'}</span></div>
-                    {selectedDayInfo.summary.status === 'regular' && (
-                      <>
-                        <div className="flex justify-between items-center"><span className="text-sm text-gray-500">Pasti:</span><span className="font-bold text-slate-800">{selectedDayInfo.summary.mealsCount}/5</span></div>
-                        <div className="flex justify-between items-center"><span className="text-sm text-gray-500">Bonus:</span><span className={`font-bold ${selectedDayInfo.summary.hasBonus ? 'text-amber-500' : 'text-emerald-500'}`}>{selectedDayInfo.summary.hasBonus ? '✨ Sì' : '🍃 No'}</span></div>
-                      </>
-                    )}
-                    <div className="pt-3 border-t border-gray-200 mt-2">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Dettaglio pasti</p>
-                      {MEALS.map(m => (
-                        <div key={m.id} className="flex justify-between py-1.5 text-sm">
-                          <span className="text-slate-600 font-medium">{m.label}</span>
-                          <span>{selectedDayInfo.summary?.meals?.[m.id] === 'regular' ? <Check size={16} className="text-emerald-500" /> : selectedDayInfo.summary?.meals?.[m.id] === 'bonus' ? <Star size={16} className="text-amber-500 fill-amber-500" /> : <X size={16} className="text-gray-300" />}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : <p className="text-gray-400 text-sm italic py-8">Nessuna attività registrata per questo giorno.</p>}
-                <button onClick={startEditing} className="w-full bg-rose-400 text-white py-4 rounded-3xl font-bold shadow-lg shadow-rose-100 text-lg active:scale-95 transition-all">Modifica Giorno</button>
-                <button onClick={() => setSelectedDayInfo(null)} className="w-full bg-gray-100 text-gray-600 py-4 rounded-3xl font-bold text-lg active:scale-95 transition-all">Chiudi</button>
-              </div>
-            )}
+    <div className="flex flex-col h-[65vh] space-y-4 animate-in fade-in duration-500">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+        {messages.length === 0 && (
+          <div className="text-center py-12 space-y-4 opacity-40">
+            <Heart size={48} className="mx-auto text-rose-300" />
+            <p className="text-sm italic">"Sono qui per ascoltarti e sostenerti, senza giudizio." ✨</p>
           </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] p-4 rounded-3xl text-sm ${m.role === 'user' ? 'bg-rose-400 text-white rounded-tr-none' : 'bg-white border border-rose-50 text-gray-700 rounded-tl-none shadow-sm'}`}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="flex justify-start">
+            <div className="bg-white p-4 rounded-3xl rounded-tl-none border border-rose-50 flex gap-1">
+              <div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce" />
+              <div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="w-1.5 h-1.5 bg-rose-300 rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 bg-white p-2 rounded-full border border-gray-100 shadow-sm mt-auto">
+        <button 
+          onClick={onToggleLive} 
+          className={`p-3 rounded-full transition-all shadow-sm ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}
+          title={isLiveActive ? "Disattiva Live Voice" : "Attiva Live Voice"}
+        >
+          {isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}
+        </button>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="Parla con Luce..."
+          className="flex-1 bg-transparent border-none focus:ring-0 text-sm px-2"
+        />
+        <button onClick={handleSend} className="p-3 bg-rose-400 text-white rounded-full shadow-md active:scale-90 transition-transform">
+          <Send size={20} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const CalendarView: React.FC<{ user: UserState; onUpdateDay: (dk: string, s: DaySummary) => void }> = ({ user }) => {
+  const days = useMemo(() => {
+    const today = new Date();
+    const result = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      result.push(d);
+    }
+    return result;
+  }, []);
+
+  return (
+    <div className="space-y-6 pb-12 animate-in fade-in duration-500">
+      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+        <TrendingUp size={24} className="text-rose-400" /> Il Tuo Viaggio
+      </h2>
+      <div className="space-y-3">
+        {days.map(date => {
+          const dk = getLocalDateKey(date);
+          const summary = user.history[dk];
+          const isSuccessful = isDaySuccessful(summary);
+          
+          return (
+            <div key={dk} className="bg-white p-4 rounded-3xl border border-gray-100 flex items-center justify-between shadow-sm transition-all hover:border-rose-100">
+              <div className="flex items-center gap-4">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm ${isSuccessful ? 'bg-emerald-50 text-emerald-500' : summary ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-300'}`}>
+                  {date.getDate()}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-700 capitalize">
+                    {date.toLocaleDateString('it-IT', { weekday: 'short', month: 'short' })}
+                  </p>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
+                    {summary?.status === 'holiday' ? 'Vacanza 🌴' : summary?.status === 'sick' ? 'Riposo 🍵' : summary ? 'Completata' : 'In attesa'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {summary?.hasBonus && <Star size={16} className="text-amber-400" fill="currentColor" />}
+                {isSuccessful ? (
+                  <CheckCircle2 size={24} className="text-emerald-400" />
+                ) : summary ? (
+                  <X size={24} className="text-rose-300" />
+                ) : (
+                  <Circle size={24} className="text-gray-100" />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const MealSelector: React.FC<{ mealToSelect: string; isWeeklyBonusUsed: boolean; onSelect: (id: string, s: 'regular' | 'bonus' | null) => void; onCancel: () => void; userMeals: Record<string, any> }> = ({ mealToSelect, isWeeklyBonusUsed, onSelect, onCancel, userMeals }) => {
+  const meal = MEALS.find(m => m.id === mealToSelect);
+  if (!meal) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end justify-center p-4 animate-in fade-in duration-300">
+      <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-in slide-in-from-bottom-full duration-300">
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 bg-rose-50 rounded-3xl flex items-center justify-center mx-auto text-rose-400 mb-2">
+            {meal.icon === 'coffee' && <Coffee size={32} />}
+            {meal.icon === 'apple' && <Apple size={32} />}
+            {meal.icon === 'utensils' && <Utensils size={32} />}
+            {meal.icon === 'moon' && <Moon size={32} />}
+          </div>
+          <h3 className="text-xl font-bold text-gray-800">{meal.label}</h3>
+          <p className="text-gray-400 text-sm">Com'è andata la registrazione?</p>
         </div>
-      )}
+        <div className="grid grid-cols-1 gap-3">
+          <button 
+            onClick={() => onSelect(mealToSelect, 'regular')} 
+            className="w-full p-5 rounded-3xl bg-emerald-50 border-2 border-emerald-100 text-emerald-700 font-bold flex items-center justify-between hover:bg-emerald-100 transition-all"
+          >
+            Pasto Regolare <Check strokeWidth={3} />
+          </button>
+          <button 
+            onClick={() => onSelect(mealToSelect, 'bonus')} 
+            disabled={isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus'}
+            className={`w-full p-5 rounded-3xl border-2 font-bold flex items-center justify-between transition-all ${isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' ? 'bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed' : 'bg-amber-50 border-amber-100 text-amber-700 hover:bg-amber-100'}`}
+          >
+            Usa Bonus <Star fill={isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' ? 'none' : 'currentColor'} />
+          </button>
+        </div>
+        <button onClick={onCancel} className="w-full text-gray-400 font-bold py-2 hover:text-gray-600 transition-colors">Più tardi</button>
+      </div>
+    </div>
+  );
+};
+
+const RewardModal: React.FC<{ onClaim: () => void }> = ({ onClaim }) => {
+  return (
+    <div className="fixed inset-0 bg-rose-400/90 backdrop-blur-md z-[100] flex items-center justify-center p-8 animate-in fade-in duration-500">
+      <div className="bg-white rounded-[3rem] p-10 text-center space-y-6 shadow-2xl max-w-sm animate-in zoom-in-95 duration-500">
+        <div className="w-24 h-24 bg-amber-50 rounded-[2rem] flex items-center justify-center mx-auto text-amber-400 mb-4">
+          <Trophy size={64} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold text-gray-800 leading-tight">Che Splendore! ✨</h2>
+          <p className="text-gray-500 italic text-sm">Hai completato la giornata con sincerità verso te stessə. Meriti un grande abbraccio virtuale.</p>
+        </div>
+        <button 
+          onClick={onClaim} 
+          className="w-full py-5 bg-rose-400 text-white rounded-3xl font-bold shadow-lg shadow-rose-200 active:scale-95 transition-all"
+        >
+          Ricevi un Abbraccio 💖
+        </button>
+      </div>
     </div>
   );
 };
