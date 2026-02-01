@@ -14,6 +14,7 @@ REGOLE DI COMPORTAMENTO:
 6. STILE DI RISPOSTA: Mantieni le risposte brevi, ritmate e piene di energia positiva.
 7. LINGUA: Rispondi sempre in italiano.
 8. PERSONA: Sii come un amico caro che crede fermamente nel potenziale di guarigione dell'utente.
+9. GENERE: Usa sempre il genere maschile per rivolgerti all'utente (es. "Benvenuto", "Sei stato bravo").
 `;
 
 export async function getLuceResponse(history: ChatMessage[], currentInput: string) {
@@ -39,10 +40,12 @@ export async function getLuceResponse(history: ChatMessage[], currentInput: stri
       }
     });
 
-    // Access the .text property directly.
     return response.text || "Mi dispiace, c'è stato un piccolo intoppo tecnico. Ma io sono qui con te! ✨";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Error:", error);
+    if (error?.message?.includes('API_KEY')) {
+       return "OPS_KEY_ERROR";
+    }
     return "Oggi la mia connessione è un po' timida, ma il mio supporto per te non cambia mai! 💖 Prova a scrivermi di nuovo tra un attimo.";
   }
 }

@@ -5,7 +5,7 @@ import {
   Heart, 
   Sparkles, 
   MessageCircle, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   Smile, 
   Frown, 
   Meh, 
@@ -27,59 +27,11 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  Palmtree,
-  Thermometer,
-  Edit3,
   Mic,
   MicOff,
-  Bell,
-  BellOff,
-  Clock,
-  ShieldCheck,
-  AlertTriangle
 } from 'lucide-react';
-
-// --- TIPI E INTERFACCE ---
-export interface DaySummary {
-  date: string;
-  isCompleted: boolean;
-  mealsCount: number;
-  hasBonus: boolean;
-  mood: string;
-  meals?: Record<string, 'regular' | 'bonus' | null>;
-  status?: 'regular' | 'holiday' | 'sick';
-}
-
-export interface UserState {
-  streak: number;
-  weeklyStreak: number;
-  bonusUsed: boolean;
-  lastCheckIn: string | null;
-  name: string;
-  dailyMeals: Record<string, 'regular' | 'bonus' | null>;
-  rewardClaimed: boolean;
-  isDayClosed: boolean;
-  history: Record<string, DaySummary>;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-export interface CheckInData {
-  mood: string;
-  emotions: string;
-  status?: 'regular' | 'holiday' | 'sick';
-}
-
-export interface MealConfig {
-  id: string;
-  label: string;
-  time: string;
-  icon: string;
-}
+import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
+import { getLuceResponse } from './geminiService';
 
 // --- COSTANTI ---
 const MEALS: MealConfig[] = [
@@ -94,12 +46,6 @@ const SYSTEM_INSTRUCTION = `
 Sei un assistente virtuale empatico e motivazionale di nome "Luce", specializzato nel supporto a persone che stanno seguendo un percorso di recupero o gestione di disturbi alimentari. 
 Il tuo tono deve essere luminoso, incoraggiante, caloroso e mai giudicante.
 Usa sempre il genere maschile per l'utente (es. "Benvenuto", "Sei stato bravo") come richiesto.
-
-REGOLE DI COMPORTAMENTO:
-1. GENTILEZZA: Mai usare parole come "fallimento" o "errore". Usa "sfida" o "momento di flessibilità".
-2. EMOJI: Usa spesso ✨, 🌟, 🍃, 💖.
-3. BONUS: Gestisci lo "sgarro" come parte normale della vita.
-4. NO CONSIGLI MEDICI: Suggerisci dolcemente di consultare professionisti se necessario.
 `;
 
 // --- HELPER FUNCTIONS ---
@@ -147,7 +93,12 @@ function createBlob(data: Float32Array): Blob {
   };
 }
 
-const getLocalDateKey = (date: Date = new Date()) => date.toLocaleDateString('en-CA');
+const getLocalDateKey = (date: Date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const getStartOfWeek = (date: Date) => {
   const d = new Date(date);
@@ -232,26 +183,6 @@ const getDynamicMotivation = (history: Record<string, DaySummary>, name: string)
   return { title: `Un passo alla volta, ${name} 🌸`, subtitle: "Ogni pasto è un nuovo atto di gentilezza verso di te." };
 };
 
-// --- SERVIZIO GEMINI INTEGRATO ---
-async function fetchLuceResponse(history: ChatMessage[], currentInput: string) {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const formattedHistory = history.map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [...formattedHistory, { role: 'user', parts: [{ text: currentInput }] }],
-      config: { systemInstruction: SYSTEM_INSTRUCTION, temperature: 0.8 }
-    });
-    return response.text || "Sono qui con te! ✨";
-  } catch (error) {
-    console.error("Chat Error:", error);
-    return "C'è stato un piccolo intoppo tecnico, ma il mio supporto per te non cambia mai! 💖";
-  }
-}
-
 // --- COMPONENTE PRINCIPALE ---
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
@@ -288,12 +219,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkKey = () => {
-      // Usiamo direttamente process.env.API_KEY senza fallback locali che clobberano
       const key = process.env.API_KEY;
-      if (key && key.length > 5) {
+      // Semplificato il controllo della chiave: se esiste nell'environment, consideriamo online.
+      if (key && key.trim() !== "") {
         setAiStatus('ok');
       } else {
-        console.warn("API Key non rilevata nell'ambiente.");
+        console.warn("API KEY non rilevata nell'environment.");
         setAiStatus('error');
       }
     };
@@ -324,8 +255,15 @@ const App: React.FC = () => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
-    const responseText = await fetchLuceResponse(messages, text);
-    setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
+    
+    const responseText = await getLuceResponse(messages, text);
+    
+    if (responseText === "OPS_KEY_ERROR") {
+      setAiStatus('error');
+      setMessages(prev => [...prev, { role: 'assistant', content: "C'è un piccolo problema con la mia chiave magica (API Key). Assicurati di averla configurata correttamente su Vercel! ✨", timestamp: new Date() }]);
+    } else {
+      setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
+    }
     setIsTyping(false);
   };
 
@@ -374,7 +312,10 @@ const App: React.FC = () => {
             }
           },
           onclose: () => setIsLiveActive(false),
-          onerror: () => setIsLiveActive(false)
+          onerror: () => {
+             setIsLiveActive(false);
+             setAiStatus('error');
+          }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
@@ -439,7 +380,7 @@ const App: React.FC = () => {
             </div>
             {!user.isDayClosed ? <button onClick={() => setView('checkin')} className="w-full bg-[#1e293b] text-white py-5 rounded-[2rem] font-bold shadow-2xl flex items-center justify-center gap-2 text-lg active:scale-95">Chiudi la Giornata <Sparkles size={22} /></button> : <div className="bg-amber-100 p-6 rounded-[2.5rem] border border-amber-200 text-amber-800 text-center font-bold">Giornata conclusa! Ottimo lavoro ✨</div>}
             
-            <div className="flex justify-center opacity-60"><div className={`px-4 py-2 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}><div className={`w-2 h-2 rounded-full animate-pulse ${aiStatus === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'}`} /><span className="text-[10px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Sistema Luce Online' : 'Luce Offline'}</span></div></div>
+            <div className="flex justify-center mb-4"><div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}><div className={`w-1.5 h-1.5 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[9px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
         )}
         {view === 'checkin' && <CheckInForm onSubmit={finalizeDay} onCancel={() => setView('dashboard')} />}
@@ -451,7 +392,7 @@ const App: React.FC = () => {
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
       <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
-        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 ${view === 'calendar' ? 'text-gray-800' : 'text-gray-300'}`}><Calendar size={28} /></button>
+        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 ${view === 'calendar' ? 'text-gray-800' : 'text-gray-300'}`}><CalendarIcon size={28} /></button>
         <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300'}`}><Sun size={32} /></button></div>
         <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 ${view === 'chat' ? 'text-gray-800' : 'text-gray-300'}`}><MessageCircle size={28} /></button>
       </nav>
@@ -495,34 +436,108 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
   );
 };
 
+// --- CALENDAR VIEW (MONTH GRID) ---
 const CalendarView: React.FC<{ user: UserState }> = ({ user }) => {
-  const days = useMemo(() => {
-    const today = new Date();
-    const result = [];
-    for (let i = 0; i < 30; i++) {
-      const d = new Date();
-      d.setDate(today.getDate() - i);
-      result.push(d);
-    }
-    return result;
-  }, []);
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  const daysInMonth = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const days = [];
+    const startDay = firstDay.getDay(); 
+    const padding = startDay === 0 ? 6 : startDay - 1; 
+    
+    for (let i = 0; i < padding; i++) days.push(null);
+    for (let i = 1; i <= lastDay.getDate(); i++) days.push(new Date(year, month, i));
+    
+    return days;
+  }, [currentDate]);
+
+  const changeMonth = (offset: number) => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
+  };
+
+  const weekdays = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+
   return (
-    <div className="space-y-4 pb-12 animate-in fade-in">
-      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><TrendingUp size={24} className="text-rose-400" /> Il Tuo Viaggio</h2>
-      <div className="space-y-3">
-        {days.map(date => {
-          const dk = getLocalDateKey(date);
-          const summary = user.history[dk];
-          return (
-            <div key={dk} className="bg-white p-4 rounded-3xl border border-gray-100 flex items-center justify-between shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-sm ${isDaySuccessful(summary) ? 'bg-emerald-50 text-emerald-500' : summary ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-300'}`}>{date.getDate()}</div>
-                <div><p className="text-sm font-bold text-gray-700 capitalize">{date.toLocaleDateString('it-IT', { weekday: 'short', month: 'short' })}</p></div>
-              </div>
-              <div>{isDaySuccessful(summary) ? <CheckCircle2 className="text-emerald-400" /> : summary ? <X className="text-rose-300" /> : <Circle className="text-gray-100" />}</div>
+    <div className="space-y-6 pb-12 animate-in fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+          <TrendingUp size={24} className="text-rose-400" /> Il Tuo Viaggio
+        </h2>
+        <div className="flex items-center gap-2 bg-white p-1 rounded-full border border-gray-100 shadow-sm">
+          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-rose-50 rounded-full text-rose-400 transition-colors">
+            <ChevronLeft size={20} />
+          </button>
+          <span className="text-xs font-bold text-gray-600 px-2 min-w-[100px] text-center capitalize">
+            {currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-rose-50 rounded-full text-rose-400 transition-colors">
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-50">
+        <div className="grid grid-cols-7 mb-4">
+          {weekdays.map(day => (
+            <div key={day} className="text-center text-[10px] font-extrabold text-gray-300 uppercase tracking-widest pb-2">
+              {day}
             </div>
-          );
-        })}
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-y-4">
+          {daysInMonth.map((date, idx) => {
+            if (!date) return <div key={`empty-${idx}`} />;
+            
+            const dk = getLocalDateKey(date);
+            const summary = user.history[dk];
+            const isSuccess = isDaySuccessful(summary);
+            const isToday = dk === getLocalDateKey(new Date());
+
+            return (
+              <div key={dk} className="flex flex-col items-center relative">
+                <div className={`
+                  w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm transition-all relative
+                  ${isSuccess ? 'bg-emerald-50 text-emerald-600' : summary ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-400'}
+                  ${isToday ? 'ring-2 ring-rose-300 ring-offset-2' : ''}
+                `}>
+                  {date.getDate()}
+                  {summary && (
+                    <div className="absolute -bottom-1 flex gap-0.5">
+                      {isSuccess ? (
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-300" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 flex flex-col items-center">
+          <CheckCircle2 size={20} className="text-emerald-500 mb-1" />
+          <span className="text-[10px] uppercase font-extrabold text-emerald-600">Completati</span>
+          <span className="text-xl font-bold text-emerald-900">{Object.values(user.history).filter(isDaySuccessful).length}</span>
+        </div>
+        <div className="bg-rose-50 p-4 rounded-3xl border border-rose-100 flex flex-col items-center">
+          <TrendingUp size={20} className="text-rose-500 mb-1" />
+          <span className="text-[10px] uppercase font-extrabold text-rose-600">Streak Max</span>
+          <span className="text-xl font-bold text-rose-900">{user.streak}</span>
+        </div>
+        <div className="bg-indigo-50 p-4 rounded-3xl border border-indigo-100 flex flex-col items-center">
+          <Sparkles size={20} className="text-indigo-500 mb-1" />
+          <span className="text-[10px] uppercase font-extrabold text-indigo-600">Bonus Sett.</span>
+          <span className="text-xl font-bold text-indigo-900">{user.bonusUsed ? 'Usato' : 'Pronto'}</span>
+        </div>
       </div>
     </div>
   );
