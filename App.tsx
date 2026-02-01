@@ -123,8 +123,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
       count++;
       d.setDate(d.getDate() - 7);
     } else {
-      // Se non è perfetta, saltiamo a quella precedente solo se count è 0 
-      // (per gestire settimane in corso), altrimenti interrompiamo la sequenza
       if (count === 0) {
         d.setDate(d.getDate() - 7);
         continue;
@@ -171,7 +169,6 @@ const App: React.FC = () => {
       setAiStatus(key && key.length > 10 ? 'ok' : 'error');
     };
     checkApiKey();
-    // Re-check periodicamente in caso di iniezione tardiva
     const interval = setInterval(checkApiKey, 2000);
     return () => clearInterval(interval);
   }, []);
@@ -569,7 +566,7 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
       <div className="flex gap-2 bg-white p-2 rounded-full border shadow-lg items-center mt-auto">
         <button onClick={onToggleLive} className={`p-3 rounded-full transition-all ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
         <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-sm bg-transparent outline-none px-3" />
-        <button onClick={() => inp.trim() && { onSendMessage(inp), setInp('') }} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
+        <button onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
       </div>
     </div>
   );
