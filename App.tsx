@@ -533,7 +533,7 @@ const App: React.FC = () => {
       {mealToSelect && <MealSelector mealId={mealToSelect} isBonusAvailable={!bonusUsedThisWeek} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
-      <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
+      <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><CalendarIcon size={28} /></button>
         <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300 hover:bg-rose-200'}`}><Sun size={32} /></button></div>
         <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><MessageCircle size={28} /></button>
