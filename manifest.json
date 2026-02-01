@@ -2,7 +2,7 @@
 {
   "name": "Luce",
   "short_name": "Luce",
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#fffafb",
   "theme_color": "#f43f5e",
