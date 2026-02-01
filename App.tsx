@@ -126,60 +126,72 @@ const calculateDailyStreak = (history: Record<string, DaySummary>): number => {
 };
 
 const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
-  let count = 0;
-  let d = new Date();
-  d.setHours(0, 0, 0, 0);
-  
-  const day = d.getDay();
-  const diffToSunday = day === 0 ? 0 : 7 - day;
-  d.setDate(d.getDate() + diffToSunday);
-  
-  const sortedKeys = Object.keys(history).sort();
-  if (sortedKeys.length === 0) return 0;
-  const earliestDate = parseDateKey(sortedKeys[0]);
-  earliestDate.setHours(0,0,0,0);
+  const historyKeys = Object.keys(history);
+  if (historyKeys.length === 0) return 0;
 
   const today = new Date();
-  today.setHours(0,0,0,0);
+  today.setHours(0, 0, 0, 0);
+  const currentMonday = getWeekMonday(today);
+  
+  const sortedKeys = historyKeys.sort();
+  const firstMonday = getWeekMonday(parseDateKey(sortedKeys[0]));
 
-  while(d >= earliestDate) {
-    let weekSuccess = true;
+  let totalCount = 0;
+  let checkMonday = new Date(currentMonday);
+
+  // Iteriamo a ritroso dalla settimana corrente fino alla prima settimana registrata
+  while (checkMonday >= firstMonday) {
+    let weekStatus: 'success' | 'fail' = 'success';
     let anyRegular = false;
-    let hasDataForWeek = false;
+    let weekHasData = false;
 
-    for(let i = 0; i < 7; i++) {
-      let check = new Date(d);
-      check.setDate(d.getDate() - i);
-      
-      if (check < earliestDate) continue;
-      if (check > today) continue;
-
-      const key = getLocalDateKey(check);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(checkMonday);
+      d.setDate(checkMonday.getDate() + i);
+      const key = getLocalDateKey(d);
       const summary = history[key];
-      
+
+      // Ignora i giorni futuri della settimana corrente
+      if (d > today) continue;
+
       if (summary) {
-        hasDataForWeek = true;
+        weekHasData = true;
         if (!isDaySuccessful(summary)) {
-          weekSuccess = false;
+          weekStatus = 'fail';
           break;
         }
         if (summary.status === 'regular') anyRegular = true;
       } else {
-        weekSuccess = false;
-        break;
+        // Un giorno senza dati in una settimana PASSATA conta come fallimento
+        if (checkMonday.getTime() < currentMonday.getTime()) {
+          weekStatus = 'fail';
+          break;
+        }
+        // Nella settimana corrente, i giorni mancanti sono semplicemente non ancora vissuti
       }
     }
 
-    if (weekSuccess && hasDataForWeek) {
-      if (anyRegular) count++;
-      d.setDate(d.getDate() - 7);
-    } else if (!hasDataForWeek) {
-       d.setDate(d.getDate() - 7);
-    } else {
-      break;
+    if (weekStatus === 'fail') {
+      // Se troviamo un fallimento, la streak si azzera COMPLETAMENTE
+      return 0;
     }
+
+    if (weekHasData && weekStatus === 'success') {
+      if (anyRegular) {
+        // Se la settimana è superata e ha almeno un giorno regolare, incrementa
+        totalCount++;
+      }
+      // Se è superata ma solo ferie/malattia, il conteggio rimane invariato (incide 0) ma la streak continua
+    } else if (!weekHasData && checkMonday.getTime() < currentMonday.getTime()) {
+      // Un buco totale di una settimana passata interrompe tutto
+      return 0;
+    }
+
+    // Passa alla settimana precedente
+    checkMonday.setDate(checkMonday.getDate() - 7);
   }
-  return count;
+
+  return totalCount;
 };
 
 // --- COMPONENTE PRINCIPALE ---
@@ -195,12 +207,13 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('luce_user_v8');
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
-      const todayStr = new Date().toDateString();
-      const todayKey = getLocalDateKey();
-      
       const history = parsed.history || {};
+      
       const newStreak = calculateDailyStreak(history);
       const newWeeklyStreak = calculateWeeklyStreak(history);
+      
+      const todayStr = new Date().toDateString();
+      const todayKey = getLocalDateKey();
       
       if (parsed.lastCheckIn !== todayStr) {
         const todayHistory = history[todayKey];
@@ -210,7 +223,8 @@ const App: React.FC = () => {
           rewardClaimed: false, 
           isDayClosed: false, 
           streak: newStreak, 
-          weeklyStreak: newWeeklyStreak 
+          weeklyStreak: newWeeklyStreak,
+          history: history
         };
       }
       
@@ -219,7 +233,8 @@ const App: React.FC = () => {
         ...parsed, 
         dailyMeals: todayHistory?.meals || parsed.dailyMeals || {},
         streak: newStreak, 
-        weeklyStreak: newWeeklyStreak 
+        weeklyStreak: newWeeklyStreak,
+        history: history
       };
     } catch { return defaultState; }
   });
