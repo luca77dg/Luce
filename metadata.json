@@ -1,0 +1,7 @@
+{
+  "name": "Luce: Il tuo Compagno di Benessere",
+  "description": "Un assistente virtuale empatico e motivazionale progettato per supportare chi affronta percorsi di recupero da disturbi alimentari, con un approccio basato sulla gentilezza e il self-care.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
