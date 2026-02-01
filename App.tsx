@@ -8,29 +8,24 @@ import {
   Smile, 
   Frown, 
   Meh, 
-  Sun,
-  Send,
-  ArrowRight,
-  CheckCircle2,
-  Coffee,
-  Apple,
-  Utensils,
-  Moon,
-  Trophy,
-  Check,
-  Star,
-  X,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
-  Mic,
-  MicOff,
-  Edit3,
+  Sun, 
+  Send, 
+  ArrowRight, 
+  Coffee, 
+  Utensils, 
+  Moon, 
+  Trophy, 
+  Check, 
+  Star, 
+  ChevronLeft, 
+  ChevronRight, 
+  TrendingUp, 
+  Mic, 
+  MicOff 
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 // --- COSTANTI ---
 const MEALS: MealConfig[] = [
@@ -100,6 +95,47 @@ const calculateDailyStreak = (history: Record<string, DaySummary>): number => {
   return streak;
 };
 
+const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
+  let count = 0;
+  let d = new Date();
+  d.setHours(0, 0, 0, 0);
+  
+  // Trova la Domenica più recente (o oggi se è Domenica)
+  while(d.getDay() !== 0) d.setDate(d.getDate() - 1);
+  
+  const historyKeys = Object.keys(history);
+  if (historyKeys.length === 0) return 0;
+  const earliestDate = new Date(historyKeys.sort()[0]);
+  earliestDate.setHours(0,0,0,0);
+
+  // Controlla le settimane a ritroso
+  while(d >= earliestDate) {
+    let weekOk = true;
+    for(let i = 0; i < 7; i++) {
+      let check = new Date(d);
+      check.setDate(check.getDate() - i);
+      if(!isDaySuccessful(history[getLocalDateKey(check)])) {
+        weekOk = false;
+        break;
+      }
+    }
+    
+    if(weekOk) {
+      count++;
+      d.setDate(d.getDate() - 7);
+    } else {
+      // Se la settimana corrente (l'ultima Domenica trovata) non è perfetta,
+      // potrebbe essere perché è ancora in corso. Proviamo quella prima.
+      if (count === 0) {
+        d.setDate(d.getDate() - 7);
+        continue;
+      }
+      break;
+    }
+  }
+  return count;
+};
+
 // --- COMPONENTE PRINCIPALE ---
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
@@ -110,7 +146,7 @@ const App: React.FC = () => {
       streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
     };
     try {
-      const saved = localStorage.getItem('luce_user_state_v3');
+      const saved = localStorage.getItem('luce_user_state_v7');
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
@@ -126,8 +162,6 @@ const App: React.FC = () => {
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
 
-  // Audio refs
-  const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
@@ -138,7 +172,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('luce_user_state_v3', JSON.stringify(user));
+    localStorage.setItem('luce_user_state_v7', JSON.stringify(user));
   }, [user]);
 
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | null) => {
@@ -159,7 +193,13 @@ const App: React.FC = () => {
         status: prev.history[dateKey]?.status || 'regular' 
       };
       const newHistory = { ...prev.history, [dateKey]: summary };
-      return { ...prev, dailyMeals: newDailyMeals, history: newHistory, streak: calculateDailyStreak(newHistory) };
+      return { 
+        ...prev, 
+        dailyMeals: newDailyMeals, 
+        history: newHistory, 
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
+      };
     });
     setMealToSelect(null);
   };
@@ -167,7 +207,12 @@ const App: React.FC = () => {
   const updateHistoryEntry = (dk: string, summary: DaySummary) => {
     setUser(prev => {
       const newHistory = { ...prev.history, [dk]: summary };
-      return { ...prev, history: newHistory, streak: calculateDailyStreak(newHistory) };
+      return { 
+        ...prev, 
+        history: newHistory, 
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
+      };
     });
   };
 
@@ -192,6 +237,7 @@ const App: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      outputAudioContextRef.current = outputCtx;
       
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -251,7 +297,8 @@ const App: React.FC = () => {
         dailyMeals: mealsToUse,
         isDayClosed: true, 
         lastCheckIn: new Date().toDateString(), 
-        streak: calculateDailyStreak(newHistory) 
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
       };
     });
     setView('dashboard');
@@ -278,8 +325,16 @@ const App: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-indigo-50 p-6 rounded-[2rem] flex flex-col items-center border border-indigo-100 shadow-sm"><Trophy className="text-indigo-500 mb-1" size={32} /><span className="text-4xl font-bold text-indigo-900">{user.streak}</span><span className="text-[10px] uppercase font-extrabold text-indigo-500">Giorni Streak</span></div>
-              <div className="bg-emerald-50 p-6 rounded-[2rem] flex flex-col items-center border border-emerald-100 shadow-sm"><Heart className="text-emerald-500 mb-1" size={32} /><span className="text-xl font-bold text-emerald-900">{user.bonusUsed ? 'Utilizzato' : 'Disponibile'}</span><span className="text-[10px] uppercase font-extrabold text-emerald-500">Bonus Sett.</span></div>
+              <div className="bg-amber-50 p-6 rounded-[2rem] flex flex-col items-center border border-amber-100 shadow-sm transition-all hover:scale-105">
+                <Star className="text-amber-500 mb-2" size={32} />
+                <span className="text-4xl font-bold text-amber-900">{user.weeklyStreak}</span>
+                <span className="text-[10px] uppercase font-extrabold text-amber-500 text-center tracking-wider mt-1">Settimane</span>
+              </div>
+              <div className="bg-emerald-50 p-6 rounded-[2rem] flex flex-col items-center border border-emerald-100 shadow-sm transition-all hover:scale-105">
+                <Heart className="text-emerald-500 mb-2" size={32} />
+                <span className="text-lg font-bold text-emerald-900 text-center leading-tight mt-1">{user.bonusUsed ? 'Usato' : 'Libero'}</span>
+                <span className="text-[10px] uppercase font-extrabold text-emerald-500 text-center tracking-wider mt-auto">Bonus Sett.</span>
+              </div>
             </div>
 
             <div className="bg-gray-50/50 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
@@ -326,6 +381,15 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
   const [status, setStatus] = useState(initialData?.status || 'regular');
   const [meals, setMeals] = useState<Record<string, 'regular' | 'bonus' | null>>(initialData?.meals || {});
 
+  const setStatusAndMeals = (newStatus: 'regular' | 'holiday' | 'sick') => {
+    setStatus(newStatus);
+    if (newStatus === 'regular') {
+      const allDone: Record<string, 'regular'> = {};
+      MEALS.forEach(m => allDone[m.id] = 'regular');
+      setMeals(allDone);
+    }
+  };
+
   const toggleMeal = (mealId: string) => {
     setMeals(prev => {
       const current = prev[mealId];
@@ -347,12 +411,12 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
         <div className="grid grid-cols-3 gap-3">
           {[
             { id: 'regular', label: 'Regolare' },
-            { id: 'holiday', label: 'Vacanza' },
+            { id: 'holiday', label: 'Ferie' },
             { id: 'sick', label: 'Malattia' }
           ].map(s => (
             <button 
               key={s.id} 
-              onClick={() => setStatus(s.id as any)} 
+              onClick={() => setStatusAndMeals(s.id as any)} 
               className={`py-4 rounded-3xl border-2 transition-all font-bold text-[10px] uppercase shadow-sm ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white text-gray-400 border-gray-100'}`}
             >
               {s.label}
@@ -373,8 +437,8 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
             >
               <span className="text-xs font-bold text-gray-700">{meal.label}</span>
               <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${
-                meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600' : 
-                meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600' : 
+                meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 shadow-sm' : 
+                meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 
                 'bg-gray-100 text-gray-400'
               }`}>
                 {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : 'Manca'}
@@ -396,7 +460,7 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
             <button 
               key={m.id} 
               onClick={() => setMood(m.id)} 
-              className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md' : 'bg-white border-gray-100'}`}
+              className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md scale-105' : 'bg-white border-gray-100'}`}
             >
               <m.icon size={32} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} />
             </button>
@@ -429,10 +493,23 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     return weeks;
   }, [curr]);
 
-  const isWeekPerfect = (week: any[]) => {
-    const validDays = week.filter(d => d !== null);
-    if (validDays.length === 0) return false;
-    return validDays.every(d => isDaySuccessful(user.history[getLocalDateKey(d)]));
+  const isSundayAStreak = (sundayDate: Date) => {
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sundayDate);
+      d.setDate(d.getDate() - i);
+      const dk = getLocalDateKey(d);
+      if (!isDaySuccessful(user.history[dk])) return false;
+    }
+    return true;
+  };
+
+  const getDayColorClass = (dk: string) => {
+    const summary = user.history[dk];
+    if (!summary) return 'bg-gray-50 text-gray-400';
+    if (summary.status === 'holiday') return 'bg-sky-50 text-sky-600 border border-sky-100';
+    if (summary.status === 'sick') return 'bg-amber-50 text-amber-600 border border-amber-100';
+    if (summary.isCompleted) return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+    return 'bg-rose-50 text-rose-500 border border-rose-100';
   };
 
   if (editing) return (
@@ -473,18 +550,16 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
               {week.map((d, di) => {
                 if (!d) return <div key={`empty-${wi}-${di}`} className="w-9 h-9" />;
                 const dk = getLocalDateKey(d);
-                const summary = user.history[dk];
-                const success = isDaySuccessful(summary);
                 const isToday = dk === getLocalDateKey();
                 return (
-                  <button key={dk} onClick={() => setEditing({ date: d, key: dk })} className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all hover:scale-110 active:scale-90 ${success ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : summary ? 'bg-rose-50 text-rose-500 border border-rose-100' : 'bg-gray-50 text-gray-400'} ${isToday ? 'ring-2 ring-rose-300 ring-offset-1' : ''}`}>
+                  <button key={dk} onClick={() => setEditing({ date: d, key: dk })} className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all hover:scale-110 active:scale-90 ${getDayColorClass(dk)} ${isToday ? 'ring-2 ring-rose-300 ring-offset-1' : ''}`}>
                     {d.getDate()}
                   </button>
                 );
               })}
               <div className="flex justify-center items-center">
-                {isWeekPerfect(week) ? (
-                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-bounce shadow-sm">
+                {week[6] && isSundayAStreak(week[6]) ? (
+                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm transition-all hover:scale-110">
                     <Star size={14} className="text-amber-500 fill-amber-500" />
                   </div>
                 ) : (
@@ -500,9 +575,9 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
         <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Legenda Viaggio</p>
         <div className="grid grid-cols-2 gap-y-3 gap-x-6">
           <div className="flex items-center gap-3"><div className="w-4 h-4 bg-emerald-100 border border-emerald-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Completato</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-rose-100 border border-rose-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Sfida</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Vuoto</span></div>
-          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-amber-100 border border-amber-200 rounded-full flex items-center justify-center"><Star size={10} className="text-amber-500 fill-amber-500" /></div><span className="text-[11px] font-bold text-gray-600">Premio Sett.</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-sky-100 border border-sky-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Ferie</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-amber-100 border border-amber-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Malattia</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-rose-100 border border-rose-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Incompleto</span></div>
         </div>
       </div>
     </div>
