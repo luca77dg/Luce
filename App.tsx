@@ -496,8 +496,12 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
 
   const setStatusAndMeals = (newStatus: 'regular' | 'holiday' | 'sick') => {
     setStatus(newStatus);
-    // Rimuoviamo l'auto-riempimento forzato dei pasti quando si seleziona 'regular'
-    // Questo permette all'utente di tornare allo stato regolare e resettare i pasti manualmente.
+    // Se lo stato è 'regular', impostiamo automaticamente tutti i pasti come 'Ok' (verdi)
+    if (newStatus === 'regular') {
+      const allRegular: Record<string, 'regular'> = {};
+      MEALS.forEach(m => allRegular[m.id] = 'regular');
+      setMeals(allRegular);
+    }
   };
 
   const toggleMeal = (mealId: string) => {
