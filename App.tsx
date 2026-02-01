@@ -251,8 +251,6 @@ const App: React.FC = () => {
       
       const otherBonusInWeek = hasBonusInWeek(prev.history, now, dateKey);
       
-      // Una giornata è completata con successo solo se tutti i pasti sono stati fatti (regular o bonus)
-      // e non è stato ecceduto il bonus settimanale.
       const isCompleted = mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
       
       const summary: DaySummary = { 
@@ -627,9 +625,18 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
   const getDayColorClass = (dk: string) => {
     const summary = user.history[dk];
     if (!summary) return 'bg-gray-50 text-gray-400';
+
+    // Determiniamo se il giorno è "effettivamente vuoto"
+    const mealsValues = summary.meals ? Object.values(summary.meals) : [];
+    const hasAnyMealData = mealsValues.some(v => v !== null);
+    const isActuallyEmpty = !hasAnyMealData && summary.status === 'regular';
+
+    if (isActuallyEmpty) return 'bg-gray-50 text-gray-400';
     if (summary.status === 'holiday') return 'bg-sky-50 text-sky-600 border border-sky-100';
     if (summary.status === 'sick') return 'bg-amber-50 text-amber-600 border border-amber-100';
     if (summary.isCompleted) return 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+    
+    // Altrimenti è "Incompleto" o contiene un KO
     return 'bg-rose-50 text-rose-500 border border-rose-100';
   };
 
