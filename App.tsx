@@ -100,15 +100,15 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   let d = new Date();
   d.setHours(0, 0, 0, 0);
   
-  // Trova la Domenica più recente (o oggi se è Domenica)
+  // Trova l'ultima Domenica passata o oggi se è Domenica
   while(d.getDay() !== 0) d.setDate(d.getDate() - 1);
   
-  const historyKeys = Object.keys(history);
-  if (historyKeys.length === 0) return 0;
-  const earliestDate = new Date(historyKeys.sort()[0]);
+  const keys = Object.keys(history);
+  if (keys.length === 0) return 0;
+  const earliestDate = new Date(keys.sort()[0]);
   earliestDate.setHours(0,0,0,0);
 
-  // Controlla le settimane a ritroso
+  // Scansioniamo a ritroso le domeniche
   while(d >= earliestDate) {
     let weekOk = true;
     for(let i = 0; i < 7; i++) {
@@ -119,13 +119,12 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
         break;
       }
     }
-    
     if(weekOk) {
       count++;
       d.setDate(d.getDate() - 7);
     } else {
-      // Se la settimana corrente (l'ultima Domenica trovata) non è perfetta,
-      // potrebbe essere perché è ancora in corso. Proviamo quella prima.
+      // Se non è perfetta, saltiamo a quella precedente solo se count è 0 
+      // (per gestire settimane in corso), altrimenti interrompiamo la sequenza
       if (count === 0) {
         d.setDate(d.getDate() - 7);
         continue;
@@ -146,7 +145,7 @@ const App: React.FC = () => {
       streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
     };
     try {
-      const saved = localStorage.getItem('luce_user_state_v7');
+      const saved = localStorage.getItem('luce_user_v8');
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
@@ -167,12 +166,18 @@ const App: React.FC = () => {
   const [isLiveActive, setIsLiveActive] = useState(false);
 
   useEffect(() => {
-    const key = process.env.API_KEY;
-    setAiStatus(key && key.length > 5 ? 'ok' : 'error');
+    const checkApiKey = () => {
+      const key = process.env.API_KEY;
+      setAiStatus(key && key.length > 10 ? 'ok' : 'error');
+    };
+    checkApiKey();
+    // Re-check periodicamente in caso di iniezione tardiva
+    const interval = setInterval(checkApiKey, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('luce_user_state_v7', JSON.stringify(user));
+    localStorage.setItem('luce_user_v8', JSON.stringify(user));
   }, [user]);
 
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | null) => {
@@ -316,7 +321,7 @@ const App: React.FC = () => {
         {view !== 'dashboard' && <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"><ArrowRight className="rotate-180" size={20} /></button>}
       </header>
 
-      <main className="flex-1 px-6 pb-2 z-10 overflow-y-auto">
+      <main className="flex-1 px-6 pb-2 z-10 overflow-y-auto custom-scrollbar">
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             <div className="space-y-1">
@@ -325,13 +330,13 @@ const App: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-amber-50 p-6 rounded-[2rem] flex flex-col items-center border border-amber-100 shadow-sm transition-all hover:scale-105">
-                <Star className="text-amber-500 mb-2" size={32} />
+              <div className="bg-amber-50 p-6 rounded-[2.2rem] flex flex-col items-center border border-amber-100 shadow-sm transition-all active:scale-95">
+                <Star className="text-amber-500 mb-2" size={36} />
                 <span className="text-4xl font-bold text-amber-900">{user.weeklyStreak}</span>
                 <span className="text-[10px] uppercase font-extrabold text-amber-500 text-center tracking-wider mt-1">Settimane</span>
               </div>
-              <div className="bg-emerald-50 p-6 rounded-[2rem] flex flex-col items-center border border-emerald-100 shadow-sm transition-all hover:scale-105">
-                <Heart className="text-emerald-500 mb-2" size={32} />
+              <div className="bg-emerald-50 p-6 rounded-[2.2rem] flex flex-col items-center border border-emerald-100 shadow-sm transition-all active:scale-95">
+                <Heart className="text-emerald-500 mb-2" size={36} />
                 <span className="text-lg font-bold text-emerald-900 text-center leading-tight mt-1">{user.bonusUsed ? 'Usato' : 'Libero'}</span>
                 <span className="text-[10px] uppercase font-extrabold text-emerald-500 text-center tracking-wider mt-auto">Bonus Sett.</span>
               </div>
@@ -367,9 +372,9 @@ const App: React.FC = () => {
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
       <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
-        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800 scale-110' : 'text-gray-300'}`}><CalendarIcon size={28} /></button>
-        <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300'}`}><Sun size={32} /></button></div>
-        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-300'}`}><MessageCircle size={28} /></button>
+        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><CalendarIcon size={28} /></button>
+        <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300 hover:bg-rose-200'}`}><Sun size={32} /></button></div>
+        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-300 hover:text-rose-300'}`}><MessageCircle size={28} /></button>
       </nav>
     </div>
   );
@@ -405,7 +410,6 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
     <div className="space-y-8 animate-in slide-in-from-bottom duration-500 pb-12">
       <h2 className="text-2xl font-bold text-gray-800 leading-tight">Com'è andata la giornata?</h2>
       
-      {/* STATO ODIERNO */}
       <div className="space-y-4">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Stato Odierno</p>
         <div className="grid grid-cols-3 gap-3">
@@ -414,41 +418,23 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
             { id: 'holiday', label: 'Ferie' },
             { id: 'sick', label: 'Malattia' }
           ].map(s => (
-            <button 
-              key={s.id} 
-              onClick={() => setStatusAndMeals(s.id as any)} 
-              className={`py-4 rounded-3xl border-2 transition-all font-bold text-[10px] uppercase shadow-sm ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white text-gray-400 border-gray-100'}`}
-            >
-              {s.label}
-            </button>
+            <button key={s.id} onClick={() => setStatusAndMeals(s.id as any)} className={`py-4 rounded-3xl border-2 transition-all font-bold text-[10px] uppercase shadow-sm ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white text-gray-400 border-gray-100'}`}>{s.label}</button>
           ))}
         </div>
       </div>
 
-      {/* MODIFICA PASTI */}
       <div className="space-y-4">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Controlla i tuoi Pasti</p>
         <div className="space-y-2">
           {MEALS.map(meal => (
-            <button 
-              key={meal.id} 
-              onClick={() => toggleMeal(meal.id)}
-              className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-95 transition-all"
-            >
+            <button key={meal.id} onClick={() => toggleMeal(meal.id)} className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-95 transition-all">
               <span className="text-xs font-bold text-gray-700">{meal.label}</span>
-              <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${
-                meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 shadow-sm' : 
-                meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 
-                'bg-gray-100 text-gray-400'
-              }`}>
-                {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : 'Manca'}
-              </div>
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 shadow-sm' : meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 shadow-sm' : 'bg-gray-100 text-gray-400'}`}>{meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : 'Manca'}</div>
             </button>
           ))}
         </div>
       </div>
 
-      {/* MOOD SELECTION */}
       <div className="space-y-4">
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Il tuo Mood</p>
         <div className="grid grid-cols-3 gap-3">
@@ -457,13 +443,7 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
             { id: 'così così', icon: Meh, color: 'text-amber-500' },
             { id: 'difficile', icon: Frown, color: 'text-rose-500' }
           ].map(m => (
-            <button 
-              key={m.id} 
-              onClick={() => setMood(m.id)} 
-              className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md scale-105' : 'bg-white border-gray-100'}`}
-            >
-              <m.icon size={32} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} />
-            </button>
+            <button key={m.id} onClick={() => setMood(m.id)} className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md scale-105' : 'bg-white border-gray-100'}`}><m.icon size={32} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} /></button>
           ))}
         </div>
       </div>
@@ -513,20 +493,13 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
   };
 
   if (editing) return (
-    <CheckInForm 
-      initialData={{ 
-        mood: user.history[editing.key]?.mood || 'felice', 
-        status: user.history[editing.key]?.status || 'regular',
-        meals: user.history[editing.key]?.meals || {}
-      }} 
+    <CheckInForm initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} 
       onSubmit={(d:any) => { 
         const mealsCount = Object.values(d.meals || {}).filter(Boolean).length;
         const isCompleted = (d.status === 'holiday' || d.status === 'sick') ? true : (mealsCount === MEALS.length);
         onUpdate(editing.key, { ...user.history[editing.key], ...d, isCompleted, mealsCount }); 
         setEditing(null); 
-      }} 
-      onCancel={() => setEditing(null)} 
-    />
+      }} onCancel={() => setEditing(null)} />
   );
 
   return (
@@ -559,12 +532,8 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
               })}
               <div className="flex justify-center items-center">
                 {week[6] && isSundayAStreak(week[6]) ? (
-                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm transition-all hover:scale-110">
-                    <Star size={14} className="text-amber-500 fill-amber-500" />
-                  </div>
-                ) : (
-                  <div className="w-2 h-2 rounded-full bg-gray-100" />
-                )}
+                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm"><Star size={14} className="text-amber-500 fill-amber-500" /></div>
+                ) : ( <div className="w-2 h-2 rounded-full bg-gray-100" /> )}
               </div>
             </React.Fragment>
           ))}
@@ -589,6 +558,7 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
   return (
     <div className="flex flex-col h-[65vh] space-y-4">
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+        {messages.length === 0 && <div className="text-center p-10 space-y-2"><div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto text-rose-400"><MessageCircle size={32} /></div><p className="text-sm text-gray-400 font-medium">Inizia a parlare con Luce ✨</p></div>}
         {messages.map((m: any, i: number) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`p-4 rounded-[1.8rem] text-sm max-w-[85%] ${m.role === 'user' ? 'bg-rose-400 text-white shadow-lg' : 'bg-white border border-rose-50 shadow-sm text-gray-700'}`}>{m.content}</div>
@@ -598,8 +568,8 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
       </div>
       <div className="flex gap-2 bg-white p-2 rounded-full border shadow-lg items-center mt-auto">
         <button onClick={onToggleLive} className={`p-3 rounded-full transition-all ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
-        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-sm bg-transparent outline-none px-3" />
-        <button onClick={() => { onSendMessage(inp); setInp(''); }} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
+        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-sm bg-transparent outline-none px-3" />
+        <button onClick={() => inp.trim() && { onSendMessage(inp), setInp('') }} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
       </div>
     </div>
   );
@@ -608,10 +578,7 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
 const MealSelector: React.FC<any> = ({ onSelect, onCancel }) => (
   <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[60] flex items-end p-4 animate-in fade-in">
     <div className="w-full bg-white rounded-[3rem] p-8 space-y-6 animate-in slide-in-from-bottom duration-300 shadow-2xl border-t border-rose-100">
-      <div className="text-center space-y-2">
-        <h3 className="font-bold text-xl text-gray-800">Cura il tuo Pasto</h3>
-        <p className="text-xs text-gray-400">Ogni pasto è un atto di gentilezza.</p>
-      </div>
+      <div className="text-center space-y-2"><h3 className="font-bold text-xl text-gray-800">Cura il tuo Pasto</h3><p className="text-xs text-gray-400">Ogni pasto è un atto di gentilezza.</p></div>
       <div className="grid gap-4">
         <button onClick={() => onSelect('colazione', 'regular')} className="w-full p-6 bg-emerald-50 text-emerald-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-emerald-100 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={24} /></button>
         <button onClick={() => onSelect('colazione', 'bonus')} className="w-full p-6 bg-amber-50 text-amber-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-amber-100 hover:bg-amber-100 transition-colors">Usa Bonus <Star size={24} /></button>
@@ -625,10 +592,7 @@ const RewardModal: React.FC<any> = ({ onClaim }) => (
   <div className="fixed inset-0 bg-rose-400/90 z-[100] flex items-center justify-center p-10 backdrop-blur-lg animate-in fade-in">
     <div className="bg-white rounded-[3rem] p-12 text-center space-y-6 animate-in zoom-in duration-500 shadow-2xl">
       <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={60} className="text-amber-400" /></div>
-      <div className="space-y-2">
-        <h2 className="text-3xl font-bold text-gray-800">Che Splendore! ✨</h2>
-        <p className="text-gray-500 text-sm leading-relaxed">Hai concluso un'altra giornata del tuo percorso. Sei stato davvero coraggioso oggi.</p>
-      </div>
+      <div className="space-y-2"><h2 className="text-3xl font-bold text-gray-800">Che Splendore! ✨</h2><p className="text-gray-500 text-sm leading-relaxed">Hai concluso un'altra giornata del tuo percorso. Sei stato davvero coraggioso oggi.</p></div>
       <button onClick={onClaim} className="w-full py-6 bg-rose-400 text-white rounded-[2rem] font-bold shadow-2xl active:scale-95 transition-all text-lg">Ricevi un Abbraccio Virtuale 💖</button>
     </div>
   </div>

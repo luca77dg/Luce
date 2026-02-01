@@ -5,11 +5,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Luce - Supporto Empatico</title>
-    <!-- Script per definire process.env in modo sicuro senza sovrascrivere variabili esistenti -->
-    <script>
-      window.process = window.process || {};
-      window.process.env = window.process.env || {};
-    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,12 +15,23 @@
         background-color: #fffafb;
         margin: 0;
         padding: 0;
+        -webkit-tap-highlight-color: transparent;
       }
       h1, h2, h3 {
         font-family: 'Plus Jakarta Sans', sans-serif;
       }
       #root {
         min-height: 100vh;
+      }
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #fecdd3;
+        border-radius: 10px;
       }
       #root:empty::before {
         content: "Accendendo la Luce...";
