@@ -199,15 +199,33 @@ const App: React.FC = () => {
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
-      // Calcoliamo la streak ad ogni caricamento per sicurezza
+      const todayKey = getLocalDateKey();
+      
       const history = parsed.history || {};
       const newStreak = calculateDailyStreak(history);
       const newWeeklyStreak = calculateWeeklyStreak(history);
       
+      // Se è un nuovo giorno, resettiamo dailyMeals MA controlliamo se nella history c'è già qualcosa per oggi
       if (parsed.lastCheckIn !== todayStr) {
-        return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false, streak: newStreak, weeklyStreak: newWeeklyStreak };
+        const todayHistory = history[todayKey];
+        return { 
+          ...parsed, 
+          dailyMeals: todayHistory?.meals || {}, 
+          rewardClaimed: false, 
+          isDayClosed: false, 
+          streak: newStreak, 
+          weeklyStreak: newWeeklyStreak 
+        };
       }
-      return { ...parsed, streak: newStreak, weeklyStreak: newWeeklyStreak };
+      
+      // Se è lo stesso giorno, assicuriamoci che dailyMeals sia sincronizzato con la history di oggi
+      const todayHistory = history[todayKey];
+      return { 
+        ...parsed, 
+        dailyMeals: todayHistory?.meals || parsed.dailyMeals || {},
+        streak: newStreak, 
+        weeklyStreak: newWeeklyStreak 
+      };
     } catch { return defaultState; }
   });
 
@@ -227,9 +245,12 @@ const App: React.FC = () => {
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | null) => {
     const now = new Date();
     const dateKey = getLocalDateKey(now);
-    const newDailyMeals = { ...user.dailyMeals, [mealId]: status };
     
     setUser(prev => {
+      // Usiamo i pasti più aggiornati (dalla history o dallo stato corrente)
+      const currentMealsInHistory = prev.history[dateKey]?.meals || prev.dailyMeals;
+      const newDailyMeals = { ...currentMealsInHistory, [mealId]: status };
+      
       const mealsCount = Object.values(newDailyMeals).filter(Boolean).length;
       const hasBonus = Object.values(newDailyMeals).some(v => v === 'bonus');
       
@@ -237,6 +258,7 @@ const App: React.FC = () => {
       const isCompleted = mealsCount === MEALS.length && !(hasBonus && otherBonusInWeek);
       
       const summary: DaySummary = { 
+        ...prev.history[dateKey],
         date: dateKey, 
         isCompleted, 
         mealsCount, 
@@ -258,11 +280,14 @@ const App: React.FC = () => {
   };
 
   const updateHistoryEntry = (dk: string, summary: DaySummary) => {
+    const isToday = dk === getLocalDateKey();
     setUser(prev => {
       const newHistory = { ...prev.history, [dk]: summary };
       return { 
         ...prev, 
         history: newHistory, 
+        // Se sto aggiornando oggi dal calendario, sincronizzo anche dailyMeals per la Dashboard
+        dailyMeals: isToday ? (summary.meals || {}) : prev.dailyMeals,
         streak: calculateDailyStreak(newHistory),
         weeklyStreak: calculateWeeklyStreak(newHistory)
       };
@@ -383,6 +408,8 @@ const App: React.FC = () => {
   };
 
   const bonusUsedThisWeek = useMemo(() => hasBonusInWeek(user.history, new Date()), [user.history]);
+  const todayKey = getLocalDateKey();
+  const currentMeals = user.history[todayKey]?.meals || user.dailyMeals;
 
   return (
     <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
@@ -408,10 +435,10 @@ const App: React.FC = () => {
                 <span className="text-4xl font-bold text-amber-900">{user.weeklyStreak}</span>
                 <span className="text-[10px] uppercase font-extrabold text-amber-500 text-center tracking-wider mt-1">Settimane</span>
               </div>
-              <div className="bg-emerald-50 p-6 rounded-[2.2rem] flex flex-col items-center border border-emerald-100 shadow-sm transition-all active:scale-95">
-                <Heart className="text-emerald-500 mb-2" size={36} />
-                <span className="text-lg font-bold text-emerald-900 text-center leading-tight mt-1">{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
-                <span className="text-[10px] uppercase font-extrabold text-emerald-500 text-center tracking-wider mt-auto">Bonus Sett.</span>
+              <div className={`${bonusUsedThisWeek ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'} p-6 rounded-[2.2rem] flex flex-col items-center border shadow-sm transition-all active:scale-95`}>
+                <Heart className={`${bonusUsedThisWeek ? 'text-rose-500' : 'text-emerald-500'} mb-2`} size={36} />
+                <span className={`text-lg font-bold ${bonusUsedThisWeek ? 'text-rose-900' : 'text-emerald-900'} text-center leading-tight mt-1`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
+                <span className={`text-[10px] uppercase font-extrabold ${bonusUsedThisWeek ? 'text-rose-500' : 'text-emerald-500'} text-center tracking-wider mt-auto`}>Bonus Sett.</span>
               </div>
             </div>
 
@@ -425,7 +452,7 @@ const App: React.FC = () => {
                     </div>
                     <div className="text-left"><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400">{meal.time}</p></div>
                   </div>
-                  {user.dailyMeals[meal.id] ? <div className={`rounded-full p-1.5 ${user.dailyMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}><Check size={16} className="text-white" /></div> : <div className="w-6 h-6 rounded-full border-2 border-gray-100" />}
+                  {currentMeals[meal.id] ? <div className={`rounded-full p-1.5 ${currentMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}><Check size={16} className="text-white" /></div> : <div className="w-6 h-6 rounded-full border-2 border-gray-100" />}
                 </button>
               ))}
             </div>
@@ -436,12 +463,12 @@ const App: React.FC = () => {
           </div>
         )}
         
-        {view === 'checkin' && <CheckInForm history={user.history} dateKey={getLocalDateKey()} initialData={{ mood: user.history[getLocalDateKey()]?.mood || 'felice', status: user.history[getLocalDateKey()]?.status || 'regular', meals: user.dailyMeals }} onSubmit={closeDay} onCancel={() => setView('dashboard')} />}
+        {view === 'checkin' && <CheckInForm history={user.history} dateKey={getLocalDateKey()} initialData={{ mood: user.history[getLocalDateKey()]?.mood || 'felice', status: user.history[getLocalDateKey()]?.status || 'regular', meals: currentMeals }} onSubmit={closeDay} onCancel={() => setView('dashboard')} />}
         {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} onToggleLive={toggleLive} />}
         {view === 'calendar' && <CalendarView user={user} onUpdate={updateHistoryEntry} />}
       </main>
 
-      {mealToSelect && <MealSelector isBonusAvailable={!bonusUsedThisWeek} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
+      {mealToSelect && <MealSelector mealId={mealToSelect} isBonusAvailable={!bonusUsedThisWeek} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
       <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
@@ -667,14 +694,14 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
   );
 };
 
-const MealSelector: React.FC<any> = ({ onSelect, onCancel, isBonusAvailable }) => (
+const MealSelector: React.FC<any> = ({ onSelect, onCancel, isBonusAvailable, mealId }) => (
   <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[60] flex items-end p-4 animate-in fade-in">
     <div className="w-full bg-white rounded-[3rem] p-8 space-y-6 animate-in slide-in-from-bottom duration-300 shadow-2xl border-t border-rose-100">
       <div className="text-center space-y-2"><h3 className="font-bold text-xl text-gray-800">Cura il tuo Pasto</h3><p className="text-xs text-gray-400">Ogni pasto è un atto di gentilezza.</p></div>
       <div className="grid gap-4">
-        <button onClick={() => onSelect('colazione', 'regular')} className="w-full p-6 bg-emerald-50 text-emerald-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-emerald-100 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={24} /></button>
+        <button onClick={() => onSelect(mealId, 'regular')} className="w-full p-6 bg-emerald-50 text-emerald-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-emerald-100 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={24} /></button>
         <button 
-          onClick={() => isBonusAvailable && onSelect('colazione', 'bonus')} 
+          onClick={() => isBonusAvailable && onSelect(mealId, 'bonus')} 
           disabled={!isBonusAvailable}
           className={`w-full p-6 rounded-[1.8rem] font-bold flex justify-between items-center border transition-all ${isBonusAvailable ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100' : 'bg-gray-50 text-gray-300 border-gray-100 opacity-50 cursor-not-allowed'}`}>
           Usa Bonus <Star size={24} className={isBonusAvailable ? "text-amber-400" : "text-gray-200"} />
