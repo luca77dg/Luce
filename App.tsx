@@ -139,7 +139,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   let totalCount = 0;
   let checkMonday = new Date(currentMonday);
 
-  // Iteriamo a ritroso dalla settimana corrente fino alla prima settimana registrata
   while (checkMonday >= firstMonday) {
     let weekStatus: 'success' | 'fail' = 'success';
     let anyRegular = false;
@@ -151,7 +150,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
       const key = getLocalDateKey(d);
       const summary = history[key];
 
-      // Ignora i giorni futuri della settimana corrente
       if (d > today) continue;
 
       if (summary) {
@@ -162,32 +160,25 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
         }
         if (summary.status === 'regular') anyRegular = true;
       } else {
-        // Un giorno senza dati in una settimana PASSATA conta come fallimento
         if (checkMonday.getTime() < currentMonday.getTime()) {
           weekStatus = 'fail';
           break;
         }
-        // Nella settimana corrente, i giorni mancanti sono semplicemente non ancora vissuti
       }
     }
 
     if (weekStatus === 'fail') {
-      // Se troviamo un fallimento, la streak si azzera COMPLETAMENTE
-      return 0;
+      break; 
     }
 
     if (weekHasData && weekStatus === 'success') {
       if (anyRegular) {
-        // Se la settimana è superata e ha almeno un giorno regolare, incrementa
         totalCount++;
       }
-      // Se è superata ma solo ferie/malattia, il conteggio rimane invariato (incide 0) ma la streak continua
     } else if (!weekHasData && checkMonday.getTime() < currentMonday.getTime()) {
-      // Un buco totale di una settimana passata interrompe tutto
-      return 0;
+      break;
     }
 
-    // Passa alla settimana precedente
     checkMonday.setDate(checkMonday.getDate() - 7);
   }
 
@@ -422,6 +413,15 @@ const App: React.FC = () => {
   const todayKey = getLocalDateKey();
   const currentMeals = user.history[todayKey]?.meals || user.dailyMeals;
 
+  const motivationalPhrase = useMemo(() => {
+    if (user.isDayClosed) return "Splendido lavoro per oggi! Luce è fiera di te. 💖";
+    if (user.weeklyStreak >= 4) return "Oltre un mese di cammino! La tua luce splende fortissima. 🌟";
+    if (user.weeklyStreak >= 1) return "Settimane di coraggio! Continua così, un passo alla volta. 🌈";
+    if (user.streak >= 3) return "Stai andando alla grande! La costanza è la tua superpotenza. 🦋";
+    if (user.streak > 0) return "Hai iniziato il tuo viaggio! Ogni pasto è una vittoria. 🌸";
+    return "Sii gentile con te stesso oggi. Sei prezioso e unico. ✨";
+  }, [user.weeklyStreak, user.streak, user.isDayClosed]);
+
   return (
     <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
       <header className="px-6 pt-8 pb-4 flex justify-between items-center z-10">
@@ -429,27 +429,39 @@ const App: React.FC = () => {
           <div className="w-10 h-10 bg-rose-400 rounded-2xl flex items-center justify-center text-white shadow-lg"><Sun size={24} /></div>
           <h1 className="text-xl font-bold text-gray-800">Luce</h1>
         </div>
-        {view !== 'dashboard' && <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"><ArrowRight className="rotate-180" size={20} /></button>}
+        {view === 'dashboard' && !user.isDayClosed ? (
+          <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
+            <ArrowRight size={24} />
+          </button>
+        ) : view !== 'dashboard' ? (
+          <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors">
+            <ArrowRight className="rotate-180" size={24} />
+          </button>
+        ) : null}
       </header>
 
       <main className="flex-1 px-6 pb-2 z-10 overflow-y-auto custom-scrollbar">
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             <div className="space-y-1">
-              <h2 className="text-2xl font-bold text-gray-800">Ciao, Luca ✨</h2>
-              <p className="text-gray-500 text-xs font-medium">Sii gentile con te stesso oggi.</p>
+              <h2 className="text-2xl font-bold text-gray-800">Ciao, {user.name} ✨</h2>
+              <p className="text-gray-500 text-xs font-medium leading-relaxed">{motivationalPhrase}</p>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-amber-50 p-6 rounded-[2.2rem] flex flex-col items-center border border-amber-100 shadow-sm transition-all active:scale-95">
-                <Star className="text-amber-500 mb-2" size={36} />
-                <span className="text-4xl font-bold text-amber-900">{user.weeklyStreak}</span>
-                <span className="text-[10px] uppercase font-extrabold text-amber-500 text-center tracking-wider mt-1">Settimane</span>
+              <div className="bg-[#fcf5e5] p-6 rounded-[2.2rem] flex flex-col items-center border border-[#f5ead2] shadow-sm transition-all active:scale-95">
+                <Star className="text-[#F4A261] mb-2" size={36} />
+                <span className="text-4xl font-bold text-[#5C4033]">{user.weeklyStreak}</span>
+                <span className="text-[10px] uppercase font-extrabold text-[#D4A373] text-center tracking-wider mt-1">Settimane</span>
               </div>
-              <div className={`${bonusUsedThisWeek ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'} p-6 rounded-[2.2rem] flex flex-col items-center border shadow-sm transition-all active:scale-95`}>
-                <Heart className={`${bonusUsedThisWeek ? 'text-rose-500' : 'text-emerald-500'} mb-2`} size={36} />
-                <span className={`text-lg font-bold ${bonusUsedThisWeek ? 'text-rose-900' : 'text-emerald-900'} text-center leading-tight mt-1`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
-                <span className={`text-[10px] uppercase font-extrabold ${bonusUsedThisWeek ? 'text-rose-500' : 'text-emerald-500'} text-center tracking-wider mt-auto`}>Bonus Sett.</span>
+              <div className={`${bonusUsedThisWeek ? 'bg-rose-50 border-rose-100' : 'bg-[#e8f5f1] border-[#d8ebe6]'} p-6 rounded-[2.2rem] flex flex-col items-center border shadow-sm transition-all active:scale-95`}>
+                {bonusUsedThisWeek ? (
+                  <Sparkles className="text-rose-500 mb-2" size={36} />
+                ) : (
+                  <Heart className="text-[#2A9D8F] mb-2" size={36} />
+                )}
+                <span className={`text-lg font-bold ${bonusUsedThisWeek ? 'text-rose-700' : 'text-[#1D3557]'} text-center leading-tight mt-1`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
+                <span className={`text-[10px] uppercase font-extrabold ${bonusUsedThisWeek ? 'text-rose-400' : 'text-[#2A9D8F]'} text-center tracking-wider mt-auto`}>Bonus Sett.</span>
               </div>
             </div>
 
@@ -477,7 +489,11 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            {!user.isDayClosed ? <button onClick={() => setView('checkin')} className="w-full bg-[#1e293b] text-white py-5 rounded-[2.5rem] font-bold shadow-2xl flex items-center justify-center gap-2 text-lg active:scale-95 transition-all">Completa la Giornata <Sparkles size={22} /></button> : <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-600 font-bold border border-rose-100">Giornata conclusa con cura ✨</div>}
+            {user.isDayClosed && (
+              <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-600 font-bold border border-rose-100 animate-in fade-in">
+                Giornata conclusa con cura ✨
+              </div>
+            )}
             
             <div className="flex justify-center"><div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><div className={`w-1.5 h-1.5 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[9px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
@@ -511,7 +527,6 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
 
   const setStatusAndMeals = (newStatus: 'regular' | 'holiday' | 'sick') => {
     setStatus(newStatus);
-    // Se lo stato è 'regular', impostiamo automaticamente tutti i pasti come 'Ok' (verdi)
     if (newStatus === 'regular') {
       const allRegular: Record<string, 'regular'> = {};
       MEALS.forEach(m => allRegular[m.id] = 'regular');
