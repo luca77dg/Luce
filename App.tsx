@@ -102,25 +102,59 @@ const hasBonusInWeek = (history: Record<string, DaySummary>, date: Date, exclude
   return false;
 };
 
+// Logica centralizzata per decidere se un giorno è considerato "OK"
 const isDaySuccessful = (summary: DaySummary | undefined): boolean => {
   if (!summary) return false;
+  // Ferie e Malattia sono sempre considerati OK ai fini della streak
   if (summary.status === 'holiday' || summary.status === 'sick') return true;
-  return summary.isCompleted;
+  return !!summary.isCompleted;
+};
+
+// Calcola se un giorno regolare è completato correttamente
+const calculateDayCompletion = (status: 'regular' | 'holiday' | 'sick', meals: Record<string, any>, history: Record<string, DaySummary>, date: Date, excludeKey?: string) => {
+  if (status === 'holiday' || status === 'sick') return true;
+  
+  const mealsValues = Object.values(meals);
+  const mealsCount = mealsValues.filter(v => v !== null).length;
+  const hasBonus = mealsValues.some(v => v === 'bonus');
+  const hasKo = mealsValues.some(v => v === 'ko');
+  const otherBonusInWeek = hasBonusInWeek(history, date, excludeKey);
+
+  // Un giorno regolare è completo se ha tutti i pasti, nessun KO e non viola il limite del bonus settimanale
+  return mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
+};
+
+const isDayFailed = (summary: DaySummary | undefined, date: Date, today: Date): boolean => {
+  if (!summary) return date < today;
+  const mealsValues = Object.values(summary.meals || {});
+  if (mealsValues.some(v => v === 'ko')) return true;
+  if (summary.status === 'regular' && date < today && !summary.isCompleted) return true;
+  return false;
 };
 
 const calculateDailyStreak = (history: Record<string, DaySummary>): number => {
   let streak = 0;
   let checkDate = new Date();
-  const todayKey = getLocalDateKey(checkDate);
-  if (!isDaySuccessful(history[todayKey])) checkDate.setDate(checkDate.getDate() - 1);
+  checkDate.setHours(0, 0, 0, 0);
+  const today = new Date(checkDate);
+  
+  const todayKey = getLocalDateKey(today);
+  if (isDayFailed(history[todayKey], today, today)) {
+    checkDate.setDate(checkDate.getDate() - 1);
+  }
   
   while (streak < 3650) {
     const dk = getLocalDateKey(checkDate);
     const summary = history[dk];
-    if (isDaySuccessful(summary)) { 
-      streak++; 
-      checkDate.setDate(checkDate.getDate() - 1); 
-    } else break;
+    
+    if (summary && !isDayFailed(summary, checkDate, today) && (summary.isCompleted || summary.status !== 'regular')) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else if (dk === getLocalDateKey(today) && !isDayFailed(summary, checkDate, today)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
   }
   return streak;
 };
@@ -131,52 +165,44 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const currentMonday = getWeekMonday(today);
   
   const sortedKeys = historyKeys.sort();
   const firstMonday = getWeekMonday(parseDateKey(sortedKeys[0]));
-
+  const currentMonday = getWeekMonday(today);
+  
   let totalCount = 0;
   let checkMonday = new Date(currentMonday);
 
   while (checkMonday >= firstMonday) {
-    let weekStatus: 'success' | 'fail' = 'success';
+    let weekStatus: 'pending' | 'success' | 'fail' = 'success';
     let anyRegular = false;
-    let weekHasData = false;
+    let hasKoInWeek = false;
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(checkMonday);
       d.setDate(checkMonday.getDate() + i);
-      const key = getLocalDateKey(d);
-      const summary = history[key];
+      const dk = getLocalDateKey(d);
+      const summary = history[dk];
 
-      if (d > today) continue;
+      const mealsValues = summary?.meals ? Object.values(summary.meals) : [];
+      if (mealsValues.some(v => v === 'ko')) {
+        hasKoInWeek = true;
+      }
 
-      if (summary) {
-        weekHasData = true;
-        if (!isDaySuccessful(summary)) {
+      if (!isDaySuccessful(summary)) {
+        if (d >= today) {
+          weekStatus = 'pending';
+        } else {
           weekStatus = 'fail';
-          break;
         }
-        if (summary.status === 'regular') anyRegular = true;
       } else {
-        if (checkMonday.getTime() < currentMonday.getTime()) {
-          weekStatus = 'fail';
-          break;
-        }
+        if (summary.status === 'regular') anyRegular = true;
       }
     }
 
-    if (weekStatus === 'fail') {
-      break; 
-    }
-
-    if (weekHasData && weekStatus === 'success') {
-      if (anyRegular) {
-        totalCount++;
-      }
-    } else if (!weekHasData && checkMonday.getTime() < currentMonday.getTime()) {
-      break;
+    if (hasKoInWeek || weekStatus === 'fail') break;
+    if (weekStatus === 'success' && anyRegular) {
+      totalCount++;
     }
 
     checkMonday.setDate(checkMonday.getDate() - 7);
@@ -243,6 +269,12 @@ const App: React.FC = () => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
   }, [user]);
 
+  // Sincronizzazione automatica tra history e dailyMeals per 'oggi'
+  const todayKey = getLocalDateKey();
+  const currentMeals = useMemo(() => {
+    return user.history[todayKey]?.meals || user.dailyMeals || {};
+  }, [user.history, user.dailyMeals, todayKey]);
+
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
     const now = new Date();
     const dateKey = getLocalDateKey(now);
@@ -254,11 +286,9 @@ const App: React.FC = () => {
       const mealsValues = Object.values(newDailyMeals);
       const mealsCount = mealsValues.filter(v => v !== null).length;
       const hasBonus = mealsValues.some(v => v === 'bonus');
-      const hasKo = mealsValues.some(v => v === 'ko');
       
-      const otherBonusInWeek = hasBonusInWeek(prev.history, now, dateKey);
-      
-      const isCompleted = mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
+      const currentStatus = prev.history[dateKey]?.status || 'regular';
+      const isCompleted = calculateDayCompletion(currentStatus, newDailyMeals, prev.history, now, dateKey);
       
       const summary: DaySummary = { 
         ...prev.history[dateKey],
@@ -268,7 +298,7 @@ const App: React.FC = () => {
         hasBonus, 
         mood: prev.history[dateKey]?.mood || 'felice', 
         meals: newDailyMeals, 
-        status: prev.history[dateKey]?.status || 'regular' 
+        status: currentStatus 
       };
       const newHistory = { ...prev.history, [dateKey]: summary };
       return { 
@@ -378,10 +408,8 @@ const App: React.FC = () => {
       const mealsValues = Object.values(mealsToUse);
       const mealsCount = mealsValues.filter(v => v !== null).length;
       const hasBonus = mealsValues.some(v => v === 'bonus');
-      const hasKo = mealsValues.some(v => v === 'ko');
       
-      const otherBonusInWeek = hasBonusInWeek(prev.history, new Date(), dk);
-      const isCompleted = (data.status === 'holiday' || data.status === 'sick') ? true : (mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek));
+      const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), dk);
       
       const summary: DaySummary = { 
         ...prev.history[dk], 
@@ -410,8 +438,6 @@ const App: React.FC = () => {
   };
 
   const bonusUsedThisWeek = useMemo(() => hasBonusInWeek(user.history, new Date()), [user.history]);
-  const todayKey = getLocalDateKey();
-  const currentMeals = user.history[todayKey]?.meals || user.dailyMeals;
 
   const motivationalPhrase = useMemo(() => {
     if (user.isDayClosed) return "Splendido lavoro per oggi! Luce è fiera di te. 💖";
@@ -468,9 +494,9 @@ const App: React.FC = () => {
             <div className="bg-gray-50/50 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
               <h3 className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Sun className="text-amber-400" size={20} /> Pasti Odierni</h3>
               {MEALS.map(meal => (
-                <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all">
+                <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all group">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gray-50">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gray-50 group-hover:bg-rose-50 transition-colors">
                       {meal.icon === 'coffee' && <Coffee size={20} className="text-gray-400" />}
                       {meal.icon === 'apple' && <Apple size={20} className="text-gray-400" />}
                       {meal.icon === 'utensils' && <Utensils size={20} className="text-gray-400" />}
@@ -479,8 +505,8 @@ const App: React.FC = () => {
                     <div className="text-left"><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400">{meal.time}</p></div>
                   </div>
                   {currentMeals[meal.id] ? (
-                    <div className={`rounded-full p-1.5 ${currentMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : currentMeals[meal.id] === 'ko' ? 'bg-rose-400 shadow-rose-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}>
-                      {currentMeals[meal.id] === 'ko' ? <XCircle size={16} className="text-white" /> : <Check size={16} className="text-white" />}
+                    <div className={`rounded-full p-0.5 border-2 ${currentMeals[meal.id] === 'ko' ? 'border-rose-400 text-rose-400' : currentMeals[meal.id] === 'bonus' ? 'border-amber-400 text-amber-400' : 'border-emerald-400 bg-emerald-400 text-white'}`}>
+                      {currentMeals[meal.id] === 'ko' ? <XCircle size={18} /> : currentMeals[meal.id] === 'bonus' ? <Star size={18} /> : <Check size={18} />}
                     </div>
                   ) : (
                     <div className="w-6 h-6 rounded-full border-2 border-gray-100" />
@@ -651,21 +677,41 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     return weeks;
   }, [curr]);
 
-  const isSundayAStreak = (sundayDate: Date) => {
+  const getWeekStatusIcon = (sundayDate: Date) => {
     let hasRegularDay = false;
     let allSuccessful = true;
+    let hasAnyKo = false;
+
     for (let i = 0; i < 7; i++) {
       const d = new Date(sundayDate);
       d.setDate(sundayDate.getDate() - i);
       const dk = getLocalDateKey(d);
       const summary = user.history[dk];
-      if (!summary || !isDaySuccessful(summary)) {
+      
+      if (!isDaySuccessful(summary)) {
         allSuccessful = false;
-        break;
       }
-      if (summary.status === 'regular') hasRegularDay = true;
+      
+      if (summary) {
+        if (summary.status === 'regular') hasRegularDay = true;
+        const mealsValues = summary.meals ? Object.values(summary.meals) : [];
+        if (mealsValues.some(v => v === 'ko')) hasAnyKo = true;
+      } else {
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        if (d < today) allSuccessful = false;
+      }
     }
-    return allSuccessful && hasRegularDay; 
+
+    if (hasAnyKo) {
+       return <div className="w-8 h-8 bg-rose-50 rounded-full flex items-center justify-center border border-rose-100 shadow-sm"><XCircle size={14} className="text-rose-500" /></div>;
+    }
+
+    if (allSuccessful && hasRegularDay) {
+       return <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm"><Star size={14} className="text-amber-500 fill-amber-500" /></div>;
+    }
+
+    return <div className="w-2 h-2 rounded-full bg-gray-100" />;
   };
 
   const getDayColorClass = (dk: string) => {
@@ -687,13 +733,13 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
   if (editing) return (
     <CheckInForm history={user.history} dateKey={editing.key} initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} 
       onSubmit={(d:any) => { 
-        const mealsValues = Object.values(d.meals || {});
+        const targetDate = parseDateKey(editing.key);
+        const mealsToUse = d.meals || {};
+        const mealsValues = Object.values(mealsToUse);
         const mealsCount = mealsValues.filter(v => v !== null).length;
         const hasBonus = mealsValues.some(v => v === 'bonus');
-        const hasKo = mealsValues.some(v => v === 'ko');
-        const targetDate = parseDateKey(editing.key);
-        const otherBonusInWeek = hasBonusInWeek(user.history, targetDate, editing.key);
-        const isCompleted = (d.status === 'holiday' || d.status === 'sick') ? true : (mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek));
+        
+        const isCompleted = calculateDayCompletion(d.status || 'regular', mealsToUse, user.history, targetDate, editing.key);
         onUpdate(editing.key, { ...user.history[editing.key], ...d, isCompleted, mealsCount, hasBonus }); 
         setEditing(null); 
       }} onCancel={() => setEditing(null)} />
@@ -728,9 +774,7 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
                 );
               })}
               <div className="flex justify-center items-center">
-                {week[6] && isSundayAStreak(week[6]) ? (
-                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-pulse shadow-sm"><Star size={14} className="text-amber-500 fill-amber-500" /></div>
-                ) : ( <div className="w-2 h-2 rounded-full bg-gray-100" /> )}
+                {week[6] && getWeekStatusIcon(week[6])}
               </div>
             </React.Fragment>
           ))}
