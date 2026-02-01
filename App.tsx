@@ -43,7 +43,6 @@ const MEALS: MealConfig[] = [
 
 const SYSTEM_INSTRUCTION = `Sei Luce, un assistente virtuale empatico per il recupero alimentare. Il tuo tono è luminoso e incoraggiante. Usa emoji ✨. Rispondi sempre al maschile verso l'utente.`;
 
-// Componente Logo che rispecchia esattamente l'icona iOS
 const LuceLogo = ({ className }: { className?: string }) => (
   <svg width="40" height="40" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" className={className}>
     <defs>
@@ -67,7 +66,6 @@ const LuceLogo = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// --- HELPER FUNCTIONS ---
 function encode(bytes: Uint8Array) {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
@@ -210,7 +208,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   return totalCount;
 };
 
-// --- COMPONENTE PRINCIPALE ---
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
   const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('ok');
@@ -232,8 +229,7 @@ const App: React.FC = () => {
         const todayHistory = history[todayKey];
         return { ...parsed, dailyMeals: todayHistory?.meals || {}, rewardClaimed: false, isDayClosed: false, streak: newStreak, weeklyStreak: newWeeklyStreak, history: history };
       }
-      const todayHistory = history[todayKey];
-      return { ...parsed, dailyMeals: todayHistory?.meals || parsed.dailyMeals || {}, streak: newStreak, weeklyStreak: newWeeklyStreak, history: history };
+      return { ...parsed, dailyMeals: history[todayKey]?.meals || parsed.dailyMeals || {}, streak: newStreak, weeklyStreak: newWeeklyStreak, history: history };
     } catch { return defaultState; }
   });
 
@@ -246,7 +242,6 @@ const App: React.FC = () => {
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
 
-  // iOS Wake Lock per AudioContext
   useEffect(() => {
     const unlockAudio = () => {
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
@@ -265,9 +260,7 @@ const App: React.FC = () => {
   }, [user]);
 
   const todayKey = getLocalDateKey();
-  const currentMeals = useMemo(() => {
-    return user.history[todayKey]?.meals || user.dailyMeals || {};
-  }, [user.history, user.dailyMeals, todayKey]);
+  const currentMeals = useMemo(() => user.history[todayKey]?.meals || user.dailyMeals || {}, [user.history, user.dailyMeals, todayKey]);
 
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
     const now = new Date();
@@ -275,12 +268,9 @@ const App: React.FC = () => {
     setUser(prev => {
       const currentMealsInHistory = prev.history[dateKey]?.meals || prev.dailyMeals;
       const newDailyMeals = { ...currentMealsInHistory, [mealId]: status };
-      const mealsValues = Object.values(newDailyMeals);
-      const mealsCount = mealsValues.filter(v => v !== null).length;
-      const hasBonus = mealsValues.some(v => v === 'bonus');
       const currentStatus = prev.history[dateKey]?.status || 'regular';
       const isCompleted = calculateDayCompletion(currentStatus, newDailyMeals, prev.history, now, dateKey);
-      const summary: DaySummary = { ...prev.history[dateKey], date: dateKey, isCompleted, mealsCount, hasBonus, mood: prev.history[dateKey]?.mood || 'felice', meals: newDailyMeals, status: currentStatus };
+      const summary: DaySummary = { ...prev.history[dateKey], date: dateKey, isCompleted, mood: prev.history[dateKey]?.mood || 'felice', meals: newDailyMeals, status: currentStatus };
       const newHistory = { ...prev.history, [dateKey]: summary };
       return { ...prev, dailyMeals: newDailyMeals, history: newHistory, streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
@@ -302,7 +292,7 @@ const App: React.FC = () => {
     const responseText = await getLuceResponse(messages, text);
     if (responseText === "OPS_KEY_ERROR") {
       setAiStatus('error');
-      setMessages(prev => [...prev, { role: 'assistant', content: "Configurazione API non valida. Verifica l'API KEY su Vercel ✨", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: "Configurazione API non valida. ✨", timestamp: new Date() }]);
     } else {
       setAiStatus('ok');
       setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
@@ -312,31 +302,21 @@ const App: React.FC = () => {
 
   const toggleLive = async () => {
     if (isLiveActive) {
-      if (sessionRef.current) {
-        sessionRef.current.close();
-        sessionRef.current = null;
-      }
+      if (sessionRef.current) { sessionRef.current.close(); sessionRef.current = null; }
       setIsLiveActive(false);
       return;
     }
 
     setIsLiveLoading(true);
     try {
-      const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
+      const apiKey = process.env.API_KEY;
       if (!apiKey) {
-        alert("Configurazione API mancante.");
-        setIsLiveLoading(false);
-        return;
-      }
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Microfono non supportato in questo browser.");
         setIsLiveLoading(false);
         return;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => {
-        alert("Accesso al microfono negato. Controlla le impostazioni di Safari.");
+        alert("Attiva il microfono nelle impostazioni di Safari.");
         throw err;
       });
       
@@ -375,24 +355,13 @@ const App: React.FC = () => {
               source.start();
             }
           },
-          onclose: () => {
-            setIsLiveActive(false);
-            setIsLiveLoading(false);
-            inputCtx.close();
-            outputCtx.close();
-          },
-          onerror: (e) => {
-            console.error("Live Error:", e);
-            setIsLiveActive(false);
-            setIsLiveLoading(false);
-            alert("Errore di connessione audio. Riprova.");
-          }
+          onclose: () => { setIsLiveActive(false); setIsLiveLoading(false); inputCtx.close(); outputCtx.close(); },
+          onerror: () => { setIsLiveActive(false); setIsLiveLoading(false); }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
       sessionRef.current = await sessionPromise;
     } catch (e) { 
-      console.error(e);
       setIsLiveActive(false);
       setIsLiveLoading(false);
     }
@@ -456,11 +425,7 @@ const App: React.FC = () => {
                 <span className="text-[11px] uppercase font-black text-[#D4A373] text-center tracking-widest mt-1">Settimane</span>
               </div>
               <div className={`${bonusUsedThisWeek ? 'bg-rose-50 border-rose-100' : 'bg-[#e8f5f1] border-[#d8ebe6]'} p-6 rounded-[2.2rem] flex flex-col items-center border shadow-sm transition-all active:scale-95`}>
-                {bonusUsedThisWeek ? (
-                  <Sparkles className="text-rose-500 mb-2" size={36} />
-                ) : (
-                  <Heart className="text-[#2A9D8F] mb-2" size={36} fill="#2A9D8F" />
-                )}
+                {bonusUsedThisWeek ? <Sparkles className="text-rose-500 mb-2" size={36} /> : <Heart className="text-[#2A9D8F] mb-2" size={36} fill="#2A9D8F" />}
                 <span className={`text-xl font-black ${bonusUsedThisWeek ? 'text-rose-700' : 'text-[#1D3557]'} text-center leading-tight mt-1 tracking-tight`}>{bonusUsedThisWeek ? 'Usato' : 'Libero'}</span>
                 <span className={`text-[11px] uppercase font-black ${bonusUsedThisWeek ? 'text-rose-400' : 'text-[#2A9D8F]'} text-center tracking-widest mt-auto`}>Bonus Sett.</span>
               </div>
@@ -483,18 +448,12 @@ const App: React.FC = () => {
                     <div className={`rounded-full p-1 border-2 ${currentMeals[meal.id] === 'ko' ? 'border-rose-500 text-rose-500' : currentMeals[meal.id] === 'bonus' ? 'border-amber-500 text-amber-500' : 'border-emerald-500 bg-emerald-500 text-white shadow-emerald-200 shadow-lg'}`}>
                       {currentMeals[meal.id] === 'ko' ? <XCircle size={20} strokeWidth={2.5} /> : currentMeals[meal.id] === 'bonus' ? <Star size={20} strokeWidth={2.5} fill="currentColor" /> : <Check size={20} strokeWidth={3} />}
                     </div>
-                  ) : (
-                    <div className="w-7 h-7 rounded-full border-2 border-gray-200" />
-                  )}
+                  ) : <div className="w-7 h-7 rounded-full border-2 border-gray-200" />}
                 </button>
               ))}
             </div>
 
-            {user.isDayClosed && (
-              <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-700 font-black border border-rose-200 animate-in fade-in shadow-sm tracking-tight">
-                Giornata conclusa con cura ✨
-              </div>
-            )}
+            {user.isDayClosed && <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-700 font-black border border-rose-200 animate-in fade-in shadow-sm tracking-tight">Giornata conclusa con cura ✨</div>}
             
             <div className="flex justify-center"><div className={`px-5 py-2 rounded-full border-2 flex items-center gap-2 shadow-sm ${aiStatus === 'ok' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}><div className={`w-2 h-2 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[10px] font-black uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
@@ -690,13 +649,12 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
         {isTyping && <div className="text-rose-600 text-[11px] animate-pulse font-black uppercase tracking-widest px-4">Luce sta scrivendo...</div>}
       </div>
       
-      {/* Barra della chat rifatta per evitare overlap su iPhone */}
-      <div className="relative flex items-center bg-white p-2 rounded-full border-2 border-rose-100 shadow-xl gap-2 mt-auto">
+      <div className="relative flex items-center bg-white p-2.5 rounded-[2.5rem] border-2 border-rose-100 shadow-2xl gap-3 mt-auto">
         <button 
           type="button"
           onClick={onToggleLive} 
           disabled={isLiveLoading}
-          className={`flex-none w-12 h-12 flex items-center justify-center rounded-full transition-all ${isLiveActive ? 'bg-rose-600 text-white animate-pulse shadow-lg' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-95'}`}
+          className={`flex-none w-11 h-11 flex items-center justify-center rounded-full transition-all shadow-sm ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-90 hover:bg-rose-100'}`}
         >
           {isLiveLoading ? <Loader2 size={24} className="animate-spin" /> : isLiveActive ? <MicOff size={24} strokeWidth={2.5} /> : <Mic size={24} strokeWidth={2.5} />}
         </button>
@@ -706,13 +664,13 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
           onChange={e => setInp(e.target.value)} 
           onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} 
           placeholder="Parla con Luce..." 
-          className="flex-1 min-w-0 text-[16px] font-bold bg-transparent outline-none px-2 text-gray-900 placeholder:text-gray-300 h-12" 
+          className="flex-1 min-w-0 text-[16px] font-bold bg-transparent outline-none py-2 text-gray-900 placeholder:text-gray-300" 
         />
         
         <button 
           type="button"
           onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} 
-          className="flex-none w-12 h-12 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-95 transition-all"
+          className="flex-none w-11 h-11 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-90 transition-all hover:bg-rose-600"
         >
           <Send size={24} strokeWidth={2.5} />
         </button>
