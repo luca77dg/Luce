@@ -4,20 +4,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Luce - Supporto Empatico</title>
+    <title>Luce</title>
     
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f43f5e">
+
     <!-- iOS PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Luce">
     
-    <!-- iOS App Icon (Fixed Data URI SVG) -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWQxIiB4MT0iMCIgeTE9IjAiIHgyPSIxODAiIHkyPSIxODAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iI0ZCM0E1RSIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNGNDNGNUUiLz4KPC9saW5lYXJHcmFkaWVudD4KPGZpbHRlciBpZD0iZmlsdGVyMCIgeD0iNDAiIHk9IjQwIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVPZmZzZXQgZHk9IjIiLz4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMiIvPgo8ZmVDb2xvck1hdHJpeCB0eXBlPSJtYXRyaXgiIHZhbHVlcz0iMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMCAwIDAgMC4xIDAiLz4KPGZlQmxlbmQgbW9kZT0ibm9ybWFsIiBpbjI9IlNvdXJjZUdyYXBoaWMiLz4KPC9maWx0ZXI+CjwvZGVmcz4KPHJlY3Qgd2lkdGg9IjE4MCIgaGVpZ2h0PSIxODAiIHJ4PSI0MCIgZmlsbBackmwocmdyYWQxKSIvPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMCkiPgo8cGF0aCBkPSJNOTAgNDRWOThNOTAgMTI2VjEzNk0xMzIgOTBIMTIyTTU4IDkwSDQ4TTEyMCA2MEwxMTIgNjhNNjggMTI0TDYwIDEzMk02MCA2MEw2OCA2OE0xMTIgMTI0TDEyMCAxMzJNMTIwIDkwQzEyMCAxMDYuNTY5IDEwNi41NjkgMTIwIDkwIDEyMEM3My40MzE1IDEyMCA2MCAxMDYuNTY5IDYwIDkwQzYwIDczLjQzMTUgNzMuNDMxNSA2MCA5MCA2MEMxMDYuNTY5IDYwIDEyMCA3My40MzE1IDEyMCA5MFoiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+CjwvZz4KPC9zdmc+">
+    <!-- Nuova Icona iOS Ottimizzata (Base64 SVG Robusto) -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRkY1RTdFIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I0ZGMkQ1NSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgZmlsbD0idXJsKCNnKSIgLz48Y2lyY2xlIGN4PSI5MCIgY3k9IjkwIiByPSIzNSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSI4IiBmaWxsPSJub25lIiAvPjxnIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48bGluZSB4MT0iOTAiIHkxPSIzMCIgeDI9IjkwIiB5Mj0iNDUiIC8+PGxpbmUgeDE9IjkwIiB5MT0iMTM1IiB4Mj0iOTAiIHkyPSIxNTAiIC8+PGxpbmUgeDE9IjMwIiB5MT0iOTAiIHgyPSI0NSIgeTI9IjkwIiAvPjxsaW5lIHgxPSIxMzUiIHkxPSI5MCIgeDI9IjE1MCIgeTI9IjkwIiAvPjxsaW5lIHgxPSI0OCIgeTE9IjQ4IiB4Mj0iNTgiIHkyPSI1OCIgLz48bGluZSB4MT0iMTIyIiB5MT0iMTIyIiB4Mj0iMTMyIiB5Mj0iMTMyIiAvPjxsaW5lIHgxPSIxMzIiIHkxPSI0OCIgeDI9IjEyMiIgeTI9IjU4IiAvPjxsaW5lIHgxPSI1OCIgeTE9IjEyMiIgeDI9IjQ4IiB5Mj0iMTMyIiAvPjwvZz48L3N2Zz4=">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       body {
         font-family: 'Quicksand', sans-serif;

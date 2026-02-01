@@ -1,0 +1,18 @@
+
+{
+  "name": "Luce",
+  "short_name": "Luce",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fffafb",
+  "theme_color": "#f43f5e",
+  "description": "Il tuo compagno empatico per il benessere.",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PGxpbmVhckdyYWRpZW50IGlkPSJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj48c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojRkY1RTdFIiAvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3R5bGU9InN0b3AtY29sb3I6I0ZGMkQ1NSIgLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgZmlsbD0idXJsKCNnKSIgLz48Y2lyY2xlIGN4PSI5MCIgY3k9IjkwIiByPSIzNSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSI4IiBmaWxsPSJub25lIiAvPjxnIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48bGluZSB4MT0iOTAiIHkxPSIzMCIgeDI9IjkwIiB5Mj0iNDUiIC8+PGxpbmUgeDE9IjkwIiB5MT0iMTM1IiB4Mj0iOTAiIHkyPSIxNTAiIC8+PGxpbmUgeDE9IjMwIiB5MT0iOTAiIHgyPSI0NSIgeTI9IjkwIiAvPjxsaW5lIHgxPSIxMzUiIHkxPSI5MCIgeDI9IjE1MCIgeTI9IjkwIiAvPjxsaW5lIHgxPSI0OCIgeTE9IjQ4IiB4Mj0iNTgiIHkyPSI1OCIgLz48bGluZSB4MT0iMTIyIiB5MT0iMTIyIiB4Mj0iMTMyIiB5Mj0iMTMyIiAvPjxsaW5lIHgxPSIxMzIiIHkxPSI0OCIgeDI9IjEyMiIgeTI9IjU4IiAvPjxsaW5lIHgxPSI1OCIgeTE9IjEyMiIgeDI9IjQ4IiB5Mj0iMTMyIiAvPjwvZz48L3N2Zz4=",
+      "sizes": "180x180",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

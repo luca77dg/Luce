@@ -42,17 +42,27 @@ const MEALS: MealConfig[] = [
 
 const SYSTEM_INSTRUCTION = `Sei Luce, un assistente virtuale empatico per il recupero alimentare. Il tuo tono è luminoso e incoraggiante. Usa emoji ✨. Rispondi sempre al maschile verso l'utente.`;
 
-// Componente Logo Inline per evitare problemi di caricamento base64
+// Componente Logo che rispecchia esattamente l'icona iOS
 const LuceLogo = ({ className }: { className?: string }) => (
-  <svg width="40" height="40" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+  <svg width="40" height="40" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg" className={className}>
     <defs>
-      <linearGradient id="grad1" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#FB3A5E" />
-        <stop offset="1" stopColor="#F43F5E" />
+      <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style={{stopColor:'#FF5E7E'}} />
+        <stop offset="100%" style={{stopColor:'#FF2D55'}} />
       </linearGradient>
     </defs>
-    <rect width="180" height="180" rx="40" fill="url(#grad1)" />
-    <path d="M90 44V54M90 126V136M136 90H126M54 90H44M122 58L115 65M65 115L58 122M58 58L65 65M115 115L122 122M110 90C110 101.046 101.046 110 90 110C78.9543 110 70 101.046 70 90C70 78.9543 78.9543 70 90 70C101.046 70 110 78.9543 110 90Z" stroke="white" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+    <rect width="180" height="180" rx="40" fill="url(#logoGrad)" />
+    <circle cx="90" cy="90" r="35" stroke="white" strokeWidth="8" fill="none" />
+    <g stroke="white" strokeWidth="8" strokeLinecap="round">
+      <line x1="90" y1="30" x2="90" y2="45" />
+      <line x1="90" y1="135" x2="90" y2="150" />
+      <line x1="30" y1="90" x2="45" y2="90" />
+      <line x1="135" y1="90" x2="150" y2="90" />
+      <line x1="48" y1="48" x2="58" y2="58" />
+      <line x1="122" y1="122" x2="132" y2="132" />
+      <line x1="132" y1="48" x2="122" y2="58" />
+      <line x1="58" y1="122" x2="48" y2="132" />
+    </g>
   </svg>
 );
 
@@ -116,12 +126,15 @@ const hasBonusInWeek = (history: Record<string, DaySummary>, date: Date, exclude
   return false;
 };
 
+// Logica centralizzata per decidere se un giorno è considerato "OK"
 const isDaySuccessful = (summary: DaySummary | undefined): boolean => {
   if (!summary) return false;
+  // Ferie e Malattia sono sempre considerati OK ai fini della streak
   if (summary.status === 'holiday' || summary.status === 'sick') return true;
   return !!summary.isCompleted;
 };
 
+// Calcola se un giorno regolare è completato correttamente
 const calculateDayCompletion = (status: 'regular' | 'holiday' | 'sick', meals: Record<string, any>, history: Record<string, DaySummary>, date: Date, excludeKey?: string) => {
   if (status === 'holiday' || status === 'sick') return true;
   
@@ -131,6 +144,7 @@ const calculateDayCompletion = (status: 'regular' | 'holiday' | 'sick', meals: R
   const hasKo = mealsValues.some(v => v === 'ko');
   const otherBonusInWeek = hasBonusInWeek(history, date, excludeKey);
 
+  // Un giorno regolare è completo se ha tutti i pasti, nessun KO e non viola il limite del bonus settimanale
   return mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
 };
 
@@ -279,6 +293,7 @@ const App: React.FC = () => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
   }, [user]);
 
+  // Sincronizzazione automatica tra history e dailyMeals per 'oggi'
   const todayKey = getLocalDateKey();
   const currentMeals = useMemo(() => {
     return user.history[todayKey]?.meals || user.dailyMeals || {};
@@ -545,13 +560,15 @@ const App: React.FC = () => {
       <nav className="p-4 flex justify-around items-center border-t border-gray-200 bg-white z-20 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-900 scale-110' : 'text-gray-400 hover:text-rose-400'}`}><CalendarIcon size={30} strokeWidth={view === 'calendar' ? 2.5 : 2} /></button>
         <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-18 h-18 rounded-full flex items-center justify-center text-white shadow-2xl border-6 border-white transition-all ${view === 'dashboard' ? 'bg-rose-500 scale-110' : 'bg-gray-400 hover:bg-rose-300'}`}><Sun size={36} strokeWidth={2.5} /></button></div>
-        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-900 scale-110' : 'text-gray-400 hover:text-rose-400'}`}><MessageCircle size={30} strokeWidth={view === 'chat' ? 2.5 : 2} /></button>
+        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-400 hover:text-rose-400'}`}><MessageCircle size={30} strokeWidth={view === 'chat' ? 2.5 : 2} /></button>
       </nav>
     </div>
   );
 };
 
-// --- COMPONENTI UI ---
+// --- Altri componenti UI rimangono uguali, LuceLogo è stato aggiornato ---
+// (Componenti CheckInForm, CalendarView, ChatView, MealSelector, RewardModal inclusi sopra per completezza se necessario)
+
 const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, dateKey }) => {
   const [mood, setMood] = useState(initialData?.mood || 'felice');
   const [status, setStatus] = useState(initialData?.status || 'regular');
