@@ -54,17 +54,9 @@ const MEALS: MealConfig[] = [
 
 const SYSTEM_INSTRUCTION = `
 Sei un assistente virtuale empatico e motivazionale di nome "Luce", specializzato nel supporto a persone che stanno seguendo un percorso di recupero o gestione di disturbi alimentari. Il tuo tono deve essere luminoso, incoraggiante, caloroso e mai giudicante.
-
-REGOLE DI COMPORTAMENTO:
-1. GENTILEZZA PRIMA DI TUTTO: Se l'utente riporta di non aver seguito la dieta, non usare mai parole come "fallimento", "errore" o "sbaglio". Usa termini come "momento di flessibilità", "piccolo intoppo" o "sfida".
-2. MOTIVAZIONE VISIVA: Usa spesso emoji colorate (🌟, ✨, 🌈, 💖, 🌸, 🦋) per rendere il testo visivamente vivo.
-3. GESTIONE DELLO "SGARRO": Se l'utente usa il suo bonus settimanale, fagli capire che è normale.
-4. FOCUS SULLE EMOZIONI: Valida le emozioni dell'utente.
-5. NO CONSIGLI MEDICI: Suggerisci di parlarne con professionisti se necessario.
-6. STILE DI RISPOSTA: Mantieni le risposte brevi e piene di energia positiva.
 `;
 
-// Audio helpers
+// Helper functions for base64 encoding/decoding and PCM audio
 function encode(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
@@ -156,14 +148,13 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   while (true) {
     let weekSuccess = true;
     let anyRegularDay = false;
-    let anyHistoryInWeek = false;
     for (let i = 0; i < 7; i++) {
       const d = new Date(checkMon);
       d.setDate(d.getDate() + i);
       const dk = getLocalDateKey(d);
       const summary = history[dk];
       if (!isDaySuccessful(summary)) { weekSuccess = false; break; }
-      if (summary) { anyHistoryInWeek = true; if (summary.status === 'regular' || !summary.status) anyRegularDay = true; }
+      if (summary) { if (summary.status === 'regular' || !summary.status) anyRegularDay = true; }
     }
     if (weekSuccess && anyRegularDay) { streak++; checkMon.setDate(checkMon.getDate() - 7); }
     else break;
@@ -201,16 +192,18 @@ const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('checking');
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    return localStorage.getItem('luce_notifications_enabled') === 'true';
+    try {
+      return localStorage.getItem('luce_notifications_enabled') === 'true';
+    } catch { return false; }
   });
   const [overdueMeal, setOverdueMeal] = useState<MealConfig | null>(null);
   
   const [user, setUser] = useState<UserState>(() => {
+    const defaultState: UserState = {
+      streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
+    };
     try {
       const saved = localStorage.getItem('luce_user_state');
-      const defaultState: UserState = {
-        streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
-      };
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
@@ -220,7 +213,7 @@ const App: React.FC = () => {
       return parsed;
     } catch (e) {
       console.error("Storage Error:", e);
-      return { streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {} };
+      return defaultState;
     }
   });
 
@@ -229,47 +222,45 @@ const App: React.FC = () => {
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
 
-  // AI Status Check Effect
+  // AI Status Check Effect - Robust to prevent ReferenceError
   useEffect(() => {
     const checkKey = async () => {
-      // Direct access check
-      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-        setAiStatus('ok');
-      } else {
-        // Some environments might not expose process.env in a standard way
-        try {
-          // If we can initialize the SDK, we consider it at least configured
-          const testAi = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-          if (process.env.API_KEY) {
-            setAiStatus('ok');
-          } else {
-            setAiStatus('error');
-          }
-        } catch (e) {
+      try {
+        const key = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : null;
+        if (key && key.length > 5) {
+          setAiStatus('ok');
+        } else {
           setAiStatus('error');
+          console.warn("API_KEY missing from environment variables.");
         }
+      } catch (e) {
+        setAiStatus('error');
+        console.error("AI Status Check failed:", e);
       }
     };
     checkKey();
   }, []);
 
-  // Live API States
-  const [isLiveActive, setIsLiveActive] = useState(false);
+  // Live API Refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-
-  // Notification / Reminder Logic
+  // Fix: Add missing lastNotifiedMealId ref to track notifications
   const lastNotifiedMealId = useRef<string | null>(null);
+  const [isLiveActive, setIsLiveActive] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('luce_user_state', JSON.stringify(user));
+    try {
+      localStorage.setItem('luce_user_state', JSON.stringify(user));
+    } catch (e) { console.error("Save Error:", e); }
   }, [user]);
 
   useEffect(() => {
-    localStorage.setItem('luce_notifications_enabled', String(notificationsEnabled));
+    try {
+      localStorage.setItem('luce_notifications_enabled', String(notificationsEnabled));
+    } catch (e) { console.error("Save Error:", e); }
   }, [notificationsEnabled]);
 
   useEffect(() => {
@@ -352,7 +343,7 @@ const App: React.FC = () => {
       return;
     }
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -458,7 +449,7 @@ const App: React.FC = () => {
           <Dashboard 
             user={user} 
             aiStatus={aiStatus}
-            onOpenMealSelector={(id) => setMealToSelect(id)} 
+            onOpenMealSelector={(id: string) => setMealToSelect(id)} 
             onCloseDay={() => setView('checkin')} 
             onReopenDay={() => setUser(prev => ({ ...prev, isDayClosed: false }))} 
             isWeeklyBonusUsed={isBonusUsedInWeekInternal(new Date(), user.history, user.dailyMeals)}
@@ -468,7 +459,7 @@ const App: React.FC = () => {
             overdueMeal={overdueMeal}
           />
         )}
-        {view === 'checkin' && <CheckInForm onSubmit={(data) => { finalizeDay(data, setUser, setView, setShowReward, sendMessage, user); }} onCancel={() => setView('dashboard')} isSaving={isSaving} initialData={user.isDayClosed ? user.history[getLocalDateKey()] : undefined} />}
+        {view === 'checkin' && <CheckInForm onSubmit={(data: any) => { finalizeDay(data, setUser, setView, setShowReward, sendMessage, user); }} onCancel={() => setView('dashboard')} isSaving={isSaving} initialData={user.isDayClosed ? user.history[getLocalDateKey()] : undefined} />}
         {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} onToggleLive={toggleLiveSession} />}
         {view === 'calendar' && <CalendarView user={user} onUpdateDay={handleUpdateDay} />}
       </main>
