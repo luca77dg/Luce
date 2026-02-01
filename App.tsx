@@ -99,16 +99,11 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   let count = 0;
   let d = new Date();
   d.setHours(0, 0, 0, 0);
-  
-  // Trova l'ultima Domenica passata o oggi se è Domenica
   while(d.getDay() !== 0) d.setDate(d.getDate() - 1);
-  
   const keys = Object.keys(history);
   if (keys.length === 0) return 0;
   const earliestDate = new Date(keys.sort()[0]);
   earliestDate.setHours(0,0,0,0);
-
-  // Scansioniamo a ritroso le domeniche
   while(d >= earliestDate) {
     let weekOk = true;
     for(let i = 0; i < 7; i++) {
@@ -136,7 +131,8 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
 // --- COMPONENTE PRINCIPALE ---
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
-  const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('checking');
+  // Partiamo ottimisti: Online per default, cambiamo solo se fallisce una chiamata
+  const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('ok');
   
   const [user, setUser] = useState<UserState>(() => {
     const defaultState: UserState = {
@@ -162,16 +158,6 @@ const App: React.FC = () => {
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
-
-  useEffect(() => {
-    const checkApiKey = () => {
-      const key = process.env.API_KEY;
-      setAiStatus(key && key.length > 10 ? 'ok' : 'error');
-    };
-    checkApiKey();
-    const interval = setInterval(checkApiKey, 2000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
@@ -222,9 +208,16 @@ const App: React.FC = () => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
+    
     const responseText = await getLuceResponse(messages, text);
-    if (responseText === "OPS_KEY_ERROR") setAiStatus('error');
-    setMessages(prev => [...prev, { role: 'assistant', content: responseText === "OPS_KEY_ERROR" ? "Configurazione API non valida ✨" : responseText, timestamp: new Date() }]);
+    
+    if (responseText === "OPS_KEY_ERROR") {
+      setAiStatus('error');
+      setMessages(prev => [...prev, { role: 'assistant', content: "Configurazione API non valida. Verifica l'API KEY su Vercel ✨", timestamp: new Date() }]);
+    } else {
+      setAiStatus('ok');
+      setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
+    }
     setIsTyping(false);
   };
 
@@ -235,7 +228,12 @@ const App: React.FC = () => {
       return;
     }
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
+      if (!apiKey) {
+        setAiStatus('error');
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -256,6 +254,7 @@ const App: React.FC = () => {
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
             setIsLiveActive(true);
+            setAiStatus('ok');
           },
           onmessage: async (msg) => {
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
@@ -268,12 +267,18 @@ const App: React.FC = () => {
             }
           },
           onclose: () => setIsLiveActive(false),
-          onerror: () => setIsLiveActive(false)
+          onerror: () => {
+            setIsLiveActive(false);
+            setAiStatus('error');
+          }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
       sessionRef.current = await sessionPromise;
-    } catch { setIsLiveActive(false); }
+    } catch { 
+      setIsLiveActive(false);
+      setAiStatus('error');
+    }
   };
 
   const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | null> }) => {

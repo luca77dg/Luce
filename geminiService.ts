@@ -15,13 +15,15 @@ REGOLE DI COMPORTAMENTO:
 `;
 
 export async function getLuceResponse(history: ChatMessage[], currentInput: string) {
-  // Inizializzazione all'interno della chiamata per catturare l'ambiente corrente
-  if (!process.env.API_KEY) {
-    console.error("API_KEY missing in process.env");
+  // Verifica sicura dell'esistenza dell'API KEY senza crashare il runtime
+  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : null;
+
+  if (!apiKey) {
+    console.error("API_KEY missing in environment");
     return "OPS_KEY_ERROR";
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   
   const formattedHistory = history.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -44,7 +46,8 @@ export async function getLuceResponse(history: ChatMessage[], currentInput: stri
     return response.text || "Sono qui con te! ✨";
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    if (error?.message?.includes('API_KEY') || error?.status === 403 || error?.status === 401) {
+    // Gestione errori di autenticazione o quota
+    if (error?.message?.includes('API_KEY') || error?.status === 403 || error?.status === 401 || error?.message?.includes('not found')) {
        return "OPS_KEY_ERROR";
     }
     return "Oggi la mia connessione è un po' timida, ma io ci sono sempre per te. 💖";
