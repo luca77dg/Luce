@@ -29,6 +29,7 @@ import {
   TrendingUp,
   Mic,
   MicOff,
+  Edit3,
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
@@ -220,11 +221,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = () => {
       const key = process.env.API_KEY;
-      // Semplificato il controllo della chiave: se esiste nell'environment, consideriamo online.
       if (key && key.trim() !== "") {
         setAiStatus('ok');
       } else {
-        console.warn("API KEY non rilevata nell'environment.");
         setAiStatus('error');
       }
     };
@@ -249,6 +248,18 @@ const App: React.FC = () => {
       return { ...prev, dailyMeals: newDailyMeals, lastCheckIn: now.toDateString(), history: newHistory, bonusUsed: isBonusUsedInWeekInternal(now, newHistory, newDailyMeals), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
     setMealToSelect(null);
+  };
+
+  const updateHistoryForDay = (dateKey: string, summary: DaySummary) => {
+    setUser(prev => {
+      const newHistory = { ...prev.history, [dateKey]: summary };
+      return {
+        ...prev,
+        history: newHistory,
+        streak: calculateDailyStreak(newHistory),
+        weeklyStreak: calculateWeeklyStreak(newHistory)
+      };
+    });
   };
 
   const sendMessage = async (text: string, silent = false) => {
@@ -385,7 +396,7 @@ const App: React.FC = () => {
         )}
         {view === 'checkin' && <CheckInForm onSubmit={finalizeDay} onCancel={() => setView('dashboard')} />}
         {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} onToggleLive={toggleLiveSession} />}
-        {view === 'calendar' && <CalendarView user={user} />}
+        {view === 'calendar' && <CalendarView user={user} onUpdateDay={updateHistoryForDay} />}
       </main>
 
       {mealToSelect && <MealSelector mealToSelect={mealToSelect} isWeeklyBonusUsed={user.bonusUsed} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} userMeals={user.dailyMeals} />}
@@ -400,20 +411,20 @@ const App: React.FC = () => {
   );
 };
 
-const CheckInForm: React.FC<{ onSubmit: (data: any) => void; onCancel: () => void }> = ({ onSubmit, onCancel }) => {
-  const [mood, setMood] = useState('felice');
-  const [emotions, setEmotions] = useState('');
-  const [status, setStatus] = useState<'regular' | 'holiday' | 'sick'>('regular');
+const CheckInForm: React.FC<{ onSubmit: (data: any) => void; onCancel: () => void; initialData?: any }> = ({ onSubmit, onCancel, initialData }) => {
+  const [mood, setMood] = useState(initialData?.mood || 'felice');
+  const [emotions, setEmotions] = useState(initialData?.emotions || '');
+  const [status, setStatus] = useState<'regular' | 'holiday' | 'sick'>(initialData?.status || 'regular');
   return (
     <div className="space-y-6 pb-12 animate-in slide-in-from-bottom duration-500">
-      <h2 className="text-2xl font-bold text-gray-800">Com'è andata oggi?</h2>
+      <h2 className="text-2xl font-bold text-gray-800">Com'è andata la giornata?</h2>
       <div className="grid grid-cols-3 gap-3">
         {['regular', 'holiday', 'sick'].map(s => <button key={s} onClick={() => setStatus(s as any)} className={`p-4 rounded-3xl border-2 transition-all ${status === s ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white border-gray-100 text-gray-300'}`}><span className="text-[10px] font-bold uppercase">{s}</span></button>)}
       </div>
       <div className="grid grid-cols-3 gap-3">
         {[{id:'felice', icon:Smile}, {id:'così così', icon:Meh}, {id:'difficile', icon:Frown}].map(m => <button key={m.id} onClick={() => setMood(m.id)} className={`p-4 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50' : 'bg-white border-gray-100'}`}><m.icon size={28} className="mx-auto" /></button>)}
       </div>
-      <textarea value={emotions} onChange={e => setEmotions(e.target.value)} placeholder="Come ti senti veramente?" className="w-full p-4 rounded-3xl border-2 border-gray-100 focus:border-rose-200 focus:ring-0 min-h-[120px] text-sm" />
+      <textarea value={emotions} onChange={e => setEmotions(e.target.value)} placeholder="Come ti senti?" className="w-full p-4 rounded-3xl border-2 border-gray-100 focus:border-rose-200 focus:ring-0 min-h-[120px] text-sm" />
       <div className="flex gap-4"><button onClick={onCancel} className="flex-1 py-4 font-bold text-gray-400">Annulla</button><button onClick={() => onSubmit({mood, emotions, status})} className="flex-[2] bg-rose-400 text-white py-4 rounded-3xl font-bold shadow-lg">Salva</button></div>
     </div>
   );
@@ -436,9 +447,10 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
   );
 };
 
-// --- CALENDAR VIEW (MONTH GRID) ---
-const CalendarView: React.FC<{ user: UserState }> = ({ user }) => {
+// --- CALENDAR VIEW (MONTH GRID WITH EDITING) ---
+const CalendarView: React.FC<{ user: UserState, onUpdateDay: (dk: string, summary: DaySummary) => void }> = ({ user, onUpdateDay }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [editingDay, setEditingDay] = useState<{ date: Date, key: string } | null>(null);
 
   const daysInMonth = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -456,11 +468,55 @@ const CalendarView: React.FC<{ user: UserState }> = ({ user }) => {
     return days;
   }, [currentDate]);
 
+  // Divide days into weeks for "Weekly Result" display
+  const weeks = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < daysInMonth.length; i += 7) {
+      result.push(daysInMonth.slice(i, i + 7));
+    }
+    return result;
+  }, [daysInMonth]);
+
   const changeMonth = (offset: number) => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
   };
 
+  const handleDayUpdate = (data: any) => {
+    if (!editingDay) return;
+    const dk = editingDay.key;
+    const existing = user.history[dk] || { date: dk, mealsCount: 0, hasBonus: false, mood: 'felice', meals: {}, isCompleted: false };
+    const updated: DaySummary = {
+      ...existing,
+      mood: data.mood,
+      status: data.status,
+      isCompleted: (data.status === 'holiday' || data.status === 'sick') ? true : existing.isCompleted
+    };
+    onUpdateDay(dk, updated);
+    setEditingDay(null);
+  };
+
+  const isWeekSuccessful = (week: (Date | null)[]) => {
+    const validDays = week.filter((d): d is Date => d !== null);
+    if (validDays.length === 0) return false;
+    return validDays.every(d => isDaySuccessful(user.history[getLocalDateKey(d)]));
+  };
+
   const weekdays = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+
+  if (editingDay) {
+    const summary = user.history[editingDay.key];
+    return (
+      <div className="space-y-6 animate-in fade-in">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setEditingDay(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
+            <ChevronLeft size={24} />
+          </button>
+          <h2 className="text-xl font-bold text-gray-800">Modifica {editingDay.date.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</h2>
+        </div>
+        <CheckInForm onSubmit={handleDayUpdate} onCancel={() => setEditingDay(null)} initialData={summary} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in">
@@ -481,44 +537,91 @@ const CalendarView: React.FC<{ user: UserState }> = ({ user }) => {
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-50">
-        <div className="grid grid-cols-7 mb-4">
+      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-50 overflow-hidden">
+        <div className="grid grid-cols-8 mb-4">
           {weekdays.map(day => (
-            <div key={day} className="text-center text-[10px] font-extrabold text-gray-300 uppercase tracking-widest pb-2">
+            <div key={day} className="text-center text-[9px] font-extrabold text-gray-300 uppercase tracking-widest pb-2">
               {day}
             </div>
           ))}
+          <div className="text-center text-[9px] font-extrabold text-rose-300 uppercase tracking-widest pb-2">
+            Sett.
+          </div>
         </div>
-        <div className="grid grid-cols-7 gap-y-4">
-          {daysInMonth.map((date, idx) => {
-            if (!date) return <div key={`empty-${idx}`} />;
-            
-            const dk = getLocalDateKey(date);
-            const summary = user.history[dk];
-            const isSuccess = isDaySuccessful(summary);
-            const isToday = dk === getLocalDateKey(new Date());
-
+        
+        <div className="space-y-4">
+          {weeks.map((week, wIdx) => {
+            const weekFull = isWeekSuccessful(week);
             return (
-              <div key={dk} className="flex flex-col items-center relative">
-                <div className={`
-                  w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm transition-all relative
-                  ${isSuccess ? 'bg-emerald-50 text-emerald-600' : summary ? 'bg-rose-50 text-rose-500' : 'bg-gray-50 text-gray-400'}
-                  ${isToday ? 'ring-2 ring-rose-300 ring-offset-2' : ''}
-                `}>
-                  {date.getDate()}
-                  {summary && (
-                    <div className="absolute -bottom-1 flex gap-0.5">
-                      {isSuccess ? (
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      ) : (
-                        <div className="w-1.5 h-1.5 rounded-full bg-rose-300" />
-                      )}
+              <div key={`week-${wIdx}`} className="grid grid-cols-8 gap-y-4 items-center">
+                {week.map((date, dIdx) => {
+                  if (!date) return <div key={`empty-${wIdx}-${dIdx}`} />;
+                  const dk = getLocalDateKey(date);
+                  const summary = user.history[dk];
+                  const isSuccess = isDaySuccessful(summary);
+                  const isToday = dk === getLocalDateKey(new Date());
+
+                  return (
+                    <button 
+                      key={dk} 
+                      onClick={() => setEditingDay({ date, key: dk })}
+                      className="flex flex-col items-center relative hover:scale-110 transition-transform"
+                    >
+                      <div className={`
+                        w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs transition-all relative
+                        ${isSuccess ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : summary ? 'bg-rose-50 text-rose-500 border border-rose-100' : 'bg-gray-50 text-gray-400'}
+                        ${isToday ? 'ring-2 ring-rose-300 ring-offset-2' : ''}
+                      `}>
+                        {date.getDate()}
+                      </div>
+                    </button>
+                  );
+                })}
+                
+                {/* Colonna Risultato Settimanale (dopo la domenica) */}
+                <div className="flex justify-center">
+                  {weekFull ? (
+                    <div className="w-9 h-9 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 shadow-sm animate-bounce">
+                      <Star size={16} className="text-amber-500 fill-amber-500" />
                     </div>
-                  )}
+                  ) : week.some(d => d && getLocalDateKey(d) === getLocalDateKey(new Date())) ? (
+                    <div className="w-9 h-9 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100 border-dashed">
+                      <Loader2 size={16} className="text-gray-300 animate-spin" />
+                    </div>
+                  ) : week.every(d => d === null || (d && d < new Date())) ? (
+                     <div className="w-9 h-9 bg-rose-50/50 rounded-full flex items-center justify-center border border-rose-100 border-dashed">
+                      <X size={16} className="text-rose-200" />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Legenda Colori */}
+      <div className="bg-white p-6 rounded-[2rem] border border-gray-100 space-y-4">
+        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Legenda Viaggio</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-md bg-emerald-100 border border-emerald-200" />
+            <span className="text-xs font-medium text-gray-600">Completato ✨</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-md bg-rose-100 border border-rose-200" />
+            <span className="text-xs font-medium text-gray-600">Sfida Incontrata 🍃</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-md bg-gray-100 border border-gray-200" />
+            <span className="text-xs font-medium text-gray-600">Da iniziare</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center">
+              <Star size={8} className="text-amber-500 fill-amber-500" />
+            </div>
+            <span className="text-xs font-medium text-gray-600">Settimana Top 🌟</span>
+          </div>
         </div>
       </div>
 
