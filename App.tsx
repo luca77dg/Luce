@@ -21,7 +21,10 @@ import {
   ChevronRight, 
   TrendingUp, 
   Mic, 
-  MicOff 
+  MicOff,
+  Apple,
+  RotateCcw,
+  XCircle
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
@@ -72,7 +75,6 @@ const getLocalDateKey = (date: Date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 
-// Converte YYYY-MM-DD in Date locale senza problemi di fuso orario
 const parseDateKey = (key: string) => {
   const [y, m, d] = key.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -127,7 +129,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
   let d = new Date();
   d.setHours(0, 0, 0, 0);
   
-  // Vai alla domenica della settimana corrente
   const day = d.getDay();
   const diffToSunday = day === 0 ? 0 : 7 - day;
   d.setDate(d.getDate() + diffToSunday);
@@ -150,7 +151,7 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
       check.setDate(d.getDate() - i);
       
       if (check < earliestDate) continue;
-      if (check > today) continue; // Ignora giorni futuri
+      if (check > today) continue;
 
       const key = getLocalDateKey(check);
       const summary = history[key];
@@ -163,22 +164,17 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
         }
         if (summary.status === 'regular') anyRegular = true;
       } else {
-        // Giorno passato senza dati = settimana interrotta/incompleta
         weekSuccess = false;
         break;
       }
     }
 
     if (weekSuccess && hasDataForWeek) {
-      if (anyRegular) {
-        count++;
-      }
-      // Se è tutta ferie, non incrementiamo ma continuiamo (skip)
+      if (anyRegular) count++;
       d.setDate(d.getDate() - 7);
     } else if (!hasDataForWeek) {
        d.setDate(d.getDate() - 7);
     } else {
-      // Settimana fallita o buco nei dati interrompe la streak
       break;
     }
   }
@@ -205,7 +201,6 @@ const App: React.FC = () => {
       const newStreak = calculateDailyStreak(history);
       const newWeeklyStreak = calculateWeeklyStreak(history);
       
-      // Se è un nuovo giorno, resettiamo dailyMeals MA controlliamo se nella history c'è già qualcosa per oggi
       if (parsed.lastCheckIn !== todayStr) {
         const todayHistory = history[todayKey];
         return { 
@@ -218,7 +213,6 @@ const App: React.FC = () => {
         };
       }
       
-      // Se è lo stesso giorno, assicuriamoci che dailyMeals sia sincronizzato con la history di oggi
       const todayHistory = history[todayKey];
       return { 
         ...parsed, 
@@ -242,20 +236,24 @@ const App: React.FC = () => {
     localStorage.setItem('luce_user_v8', JSON.stringify(user));
   }, [user]);
 
-  const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | null) => {
+  const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
     const now = new Date();
     const dateKey = getLocalDateKey(now);
     
     setUser(prev => {
-      // Usiamo i pasti più aggiornati (dalla history o dallo stato corrente)
       const currentMealsInHistory = prev.history[dateKey]?.meals || prev.dailyMeals;
       const newDailyMeals = { ...currentMealsInHistory, [mealId]: status };
       
-      const mealsCount = Object.values(newDailyMeals).filter(Boolean).length;
-      const hasBonus = Object.values(newDailyMeals).some(v => v === 'bonus');
+      const mealsValues = Object.values(newDailyMeals);
+      const mealsCount = mealsValues.filter(v => v !== null).length;
+      const hasBonus = mealsValues.some(v => v === 'bonus');
+      const hasKo = mealsValues.some(v => v === 'ko');
       
       const otherBonusInWeek = hasBonusInWeek(prev.history, now, dateKey);
-      const isCompleted = mealsCount === MEALS.length && !(hasBonus && otherBonusInWeek);
+      
+      // Una giornata è completata con successo solo se tutti i pasti sono stati fatti (regular o bonus)
+      // e non è stato ecceduto il bonus settimanale.
+      const isCompleted = mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek);
       
       const summary: DaySummary = { 
         ...prev.history[dateKey],
@@ -286,7 +284,6 @@ const App: React.FC = () => {
       return { 
         ...prev, 
         history: newHistory, 
-        // Se sto aggiornando oggi dal calendario, sincronizzo anche dailyMeals per la Dashboard
         dailyMeals: isToday ? (summary.meals || {}) : prev.dailyMeals,
         streak: calculateDailyStreak(newHistory),
         weeklyStreak: calculateWeeklyStreak(newHistory)
@@ -298,9 +295,7 @@ const App: React.FC = () => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
-    
     const responseText = await getLuceResponse(messages, text);
-    
     if (responseText === "OPS_KEY_ERROR") {
       setAiStatus('error');
       setMessages(prev => [...prev, { role: 'assistant', content: "Configurazione API non valida. Verifica l'API KEY su Vercel ✨", timestamp: new Date() }]);
@@ -371,15 +366,17 @@ const App: React.FC = () => {
     }
   };
 
-  const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | null> }) => {
+  const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | 'ko' | null> }) => {
     const dk = getLocalDateKey();
     setUser(prev => {
       const mealsToUse = data.meals || prev.dailyMeals;
-      const mealsCount = Object.values(mealsToUse).filter(Boolean).length;
-      const hasBonus = Object.values(mealsToUse).some(v => v === 'bonus');
+      const mealsValues = Object.values(mealsToUse);
+      const mealsCount = mealsValues.filter(v => v !== null).length;
+      const hasBonus = mealsValues.some(v => v === 'bonus');
+      const hasKo = mealsValues.some(v => v === 'ko');
       
       const otherBonusInWeek = hasBonusInWeek(prev.history, new Date(), dk);
-      const isCompleted = (data.status === 'holiday' || data.status === 'sick') ? true : (mealsCount === MEALS.length && !(hasBonus && otherBonusInWeek));
+      const isCompleted = (data.status === 'holiday' || data.status === 'sick') ? true : (mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek));
       
       const summary: DaySummary = { 
         ...prev.history[dk], 
@@ -448,11 +445,20 @@ const App: React.FC = () => {
                 <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gray-50">
-                      {meal.icon === 'coffee' ? <Coffee size={20} className="text-gray-400" /> : <Utensils size={20} className="text-gray-400" />}
+                      {meal.icon === 'coffee' && <Coffee size={20} className="text-gray-400" />}
+                      {meal.icon === 'apple' && <Apple size={20} className="text-gray-400" />}
+                      {meal.icon === 'utensils' && <Utensils size={20} className="text-gray-400" />}
+                      {meal.icon === 'moon' && <Moon size={20} className="text-gray-400" />}
                     </div>
                     <div className="text-left"><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400">{meal.time}</p></div>
                   </div>
-                  {currentMeals[meal.id] ? <div className={`rounded-full p-1.5 ${currentMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}><Check size={16} className="text-white" /></div> : <div className="w-6 h-6 rounded-full border-2 border-gray-100" />}
+                  {currentMeals[meal.id] ? (
+                    <div className={`rounded-full p-1.5 ${currentMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : currentMeals[meal.id] === 'ko' ? 'bg-rose-400 shadow-rose-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}>
+                      {currentMeals[meal.id] === 'ko' ? <XCircle size={16} className="text-white" /> : <Check size={16} className="text-white" />}
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 rounded-full border-2 border-gray-100" />
+                  )}
                 </button>
               ))}
             </div>
@@ -484,7 +490,7 @@ const App: React.FC = () => {
 const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, dateKey }) => {
   const [mood, setMood] = useState(initialData?.mood || 'felice');
   const [status, setStatus] = useState(initialData?.status || 'regular');
-  const [meals, setMeals] = useState<Record<string, 'regular' | 'bonus' | null>>(initialData?.meals || {});
+  const [meals, setMeals] = useState<Record<string, 'regular' | 'bonus' | 'ko' | null>>(initialData?.meals || {});
 
   const currentDayKey = dateKey || getLocalDateKey();
   const bonusUsedInWeek = useMemo(() => hasBonusInWeek(history || {}, parseDateKey(currentDayKey), currentDayKey), [history, currentDayKey]);
@@ -501,16 +507,23 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
   const toggleMeal = (mealId: string) => {
     setMeals(prev => {
       const current = prev[mealId];
-      let next: 'regular' | 'bonus' | null = null;
+      let next: 'regular' | 'bonus' | 'ko' | null = null;
       if (!current) {
         next = 'regular';
       } else if (current === 'regular') {
-        next = bonusUsedInWeek ? null : 'bonus';
+        next = bonusUsedInWeek ? 'ko' : 'bonus';
+      } else if (current === 'bonus') {
+        next = 'ko';
       } else {
-        next = null;
+        next = 'regular';
       }
       return { ...prev, [mealId]: next };
     });
+  };
+
+  const resetMeal = (mealId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMeals(prev => ({ ...prev, [mealId]: null }));
   };
 
   return (
@@ -534,12 +547,24 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Controlla i tuoi Pasti</p>
         <div className="space-y-2">
           {MEALS.map(meal => (
-            <button key={meal.id} onClick={() => toggleMeal(meal.id)} className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-[0.98] transition-all">
+            <div key={meal.id} onClick={() => toggleMeal(meal.id)} className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-[0.98] transition-all cursor-pointer group">
               <span className="text-xs font-bold text-gray-700">{meal.label}</span>
-              <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all shadow-sm ${meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 border border-amber-200' : meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-400 border border-gray-200'}`}>
-                {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : 'Manca'}
+              <div className="flex items-center gap-2">
+                <div className={`px-4 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all shadow-sm ${
+                  meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600 border border-amber-200' : 
+                  meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600 border border-emerald-200' : 
+                  meals[meal.id] === 'ko' ? 'bg-rose-100 text-rose-600 border border-rose-200' :
+                  'bg-gray-50 text-gray-300 border border-gray-100'
+                }`}>
+                  {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : meals[meal.id] === 'ko' ? 'KO' : 'Incompleto'}
+                </div>
+                {meals[meal.id] !== null && (
+                  <button onClick={(e) => resetMeal(meal.id, e)} className="p-1.5 hover:bg-gray-100 rounded-full text-gray-400 transition-colors" title="Reset pasto">
+                    <RotateCcw size={14} />
+                  </button>
+                )}
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -611,11 +636,13 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
   if (editing) return (
     <CheckInForm history={user.history} dateKey={editing.key} initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} 
       onSubmit={(d:any) => { 
-        const mealsCount = Object.values(d.meals || {}).filter(Boolean).length;
-        const hasBonus = Object.values(d.meals || {}).some(v => v === 'bonus');
+        const mealsValues = Object.values(d.meals || {});
+        const mealsCount = mealsValues.filter(v => v !== null).length;
+        const hasBonus = mealsValues.some(v => v === 'bonus');
+        const hasKo = mealsValues.some(v => v === 'ko');
         const targetDate = parseDateKey(editing.key);
         const otherBonusInWeek = hasBonusInWeek(user.history, targetDate, editing.key);
-        const isCompleted = (d.status === 'holiday' || d.status === 'sick') ? true : (mealsCount === MEALS.length && !(hasBonus && otherBonusInWeek));
+        const isCompleted = (d.status === 'holiday' || d.status === 'sick') ? true : (mealsCount === MEALS.length && !hasKo && !(hasBonus && otherBonusInWeek));
         onUpdate(editing.key, { ...user.history[editing.key], ...d, isCompleted, mealsCount, hasBonus }); 
         setEditing(null); 
       }} onCancel={() => setEditing(null)} />
@@ -706,6 +733,7 @@ const MealSelector: React.FC<any> = ({ onSelect, onCancel, isBonusAvailable, mea
           className={`w-full p-6 rounded-[1.8rem] font-bold flex justify-between items-center border transition-all ${isBonusAvailable ? 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100' : 'bg-gray-50 text-gray-300 border-gray-100 opacity-50 cursor-not-allowed'}`}>
           Usa Bonus <Star size={24} className={isBonusAvailable ? "text-amber-400" : "text-gray-200"} />
         </button>
+        <button onClick={() => onSelect(mealId, 'ko')} className="w-full p-6 bg-rose-50 text-rose-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-rose-100 hover:bg-rose-100 transition-colors">Pasto Saltato / KO <XCircle size={24} /></button>
         {!isBonusAvailable && <p className="text-[10px] text-center text-rose-400 font-bold uppercase tracking-wider">Bonus già utilizzato per questa settimana ✨</p>}
       </div>
       <button onClick={onCancel} className="w-full py-2 text-gray-400 font-bold hover:text-gray-600 transition-colors">Forse più tardi</button>

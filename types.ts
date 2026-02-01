@@ -5,7 +5,7 @@ export interface DaySummary {
   mealsCount: number;
   hasBonus: boolean;
   mood: string;
-  meals?: Record<string, 'regular' | 'bonus' | null>;
+  meals?: Record<string, 'regular' | 'bonus' | 'ko' | null>;
   status?: 'regular' | 'holiday' | 'sick';
 }
 
@@ -15,7 +15,7 @@ export interface UserState {
   bonusUsed: boolean;
   lastCheckIn: string | null;
   name: string;
-  dailyMeals: Record<string, 'regular' | 'bonus' | null>;
+  dailyMeals: Record<string, 'regular' | 'bonus' | 'ko' | null>;
   rewardClaimed: boolean;
   isDayClosed: boolean;
   history: Record<string, DaySummary>; // Keyed by YYYY-MM-DD
