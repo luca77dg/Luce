@@ -233,7 +233,6 @@ const getDynamicMotivation = (history: Record<string, DaySummary>, name: string)
 };
 
 // --- SERVIZIO GEMINI INTEGRATO ---
-// Fix: Use process.env.API_KEY directly as required by guidelines
 async function fetchLuceResponse(history: ChatMessage[], currentInput: string) {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -248,7 +247,7 @@ async function fetchLuceResponse(history: ChatMessage[], currentInput: string) {
     });
     return response.text || "Sono qui con te! ✨";
   } catch (error) {
-    console.error(error);
+    console.error("Chat Error:", error);
     return "C'è stato un piccolo intoppo tecnico, ma il mio supporto per te non cambia mai! 💖";
   }
 }
@@ -257,10 +256,6 @@ async function fetchLuceResponse(history: ChatMessage[], currentInput: string) {
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'checkin' | 'chat' | 'calendar'>('dashboard');
   const [aiStatus, setAiStatus] = useState<'checking' | 'ok' | 'error'>('checking');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    try { return localStorage.getItem('luce_notifications_enabled') === 'true'; } catch { return false; }
-  });
-  const [overdueMeal, setOverdueMeal] = useState<MealConfig | null>(null);
   
   const [user, setUser] = useState<UserState>(() => {
     const defaultState: UserState = {
@@ -293,8 +288,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkKey = () => {
-      const key = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : null;
-      setAiStatus(key && key.length > 5 ? 'ok' : 'error');
+      // Usiamo direttamente process.env.API_KEY senza fallback locali che clobberano
+      const key = process.env.API_KEY;
+      if (key && key.length > 5) {
+        setAiStatus('ok');
+      } else {
+        console.warn("API Key non rilevata nell'ambiente.");
+        setAiStatus('error');
+      }
     };
     checkKey();
   }, []);
@@ -328,7 +329,6 @@ const App: React.FC = () => {
     setIsTyping(false);
   };
 
-  // Fix: Use process.env.API_KEY directly as required by guidelines
   const toggleLiveSession = async () => {
     if (isLiveActive) {
       sessionRef.current?.close();
