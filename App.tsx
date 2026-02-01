@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { 
   Heart, 
   Sparkles, 
@@ -12,9 +11,7 @@ import {
   Sun,
   Send,
   ArrowRight,
-  Info,
   CheckCircle2,
-  Circle,
   Coffee,
   Apple,
   Utensils,
@@ -33,6 +30,7 @@ import {
 } from 'lucide-react';
 import { DaySummary, UserState, ChatMessage, CheckInData, MealConfig } from './types';
 import { getLuceResponse } from './geminiService';
+import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 
 // --- COSTANTI ---
 const MEALS: MealConfig[] = [
@@ -43,29 +41,19 @@ const MEALS: MealConfig[] = [
   { id: 'cena', label: 'Cena', time: '20:00', icon: 'moon' },
 ];
 
-const SYSTEM_INSTRUCTION = `
-Sei un assistente virtuale empatico e motivazionale di nome "Luce", specializzato nel supporto a persone che stanno seguendo un percorso di recupero o gestione di disturbi alimentari. 
-Il tuo tono deve essere luminoso, incoraggiante, caloroso e mai giudicante.
-Usa sempre il genere maschile per l'utente (es. "Benvenuto", "Sei stato bravo") come richiesto.
-`;
+const SYSTEM_INSTRUCTION = `Sei Luce, un assistente virtuale empatico per il recupero alimentare. Il tuo tono è luminoso e incoraggiante. Usa emoji ✨. Rispondi sempre al maschile verso l'utente.`;
 
 // --- HELPER FUNCTIONS ---
 function encode(bytes: Uint8Array) {
   let binary = '';
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 
 function decode(base64: string) {
   const binaryString = atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
 }
 
@@ -82,30 +70,11 @@ async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: 
   return buffer;
 }
 
-function createBlob(data: Float32Array): Blob {
-  const l = data.length;
-  const int16 = new Int16Array(l);
-  for (let i = 0; i < l; i++) {
-    int16[i] = data[i] * 32768;
-  }
-  return {
-    data: encode(new Uint8Array(int16.buffer)),
-    mimeType: 'audio/pcm;rate=16000',
-  };
-}
-
 const getLocalDateKey = (date: Date = new Date()) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-};
-
-const getStartOfWeek = (date: Date) => {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
 };
 
 const isDaySuccessful = (summary: DaySummary | undefined): boolean => {
@@ -116,72 +85,19 @@ const isDaySuccessful = (summary: DaySummary | undefined): boolean => {
 
 const calculateDailyStreak = (history: Record<string, DaySummary>): number => {
   let streak = 0;
-  const now = new Date();
-  let checkDate = new Date(now);
-  const todayKey = getLocalDateKey(now);
+  let checkDate = new Date();
+  const todayKey = getLocalDateKey(checkDate);
   if (!isDaySuccessful(history[todayKey])) checkDate.setDate(checkDate.getDate() - 1);
+  
   while (streak < 3650) {
     const dk = getLocalDateKey(checkDate);
     const summary = history[dk];
     if (isDaySuccessful(summary)) { 
       streak++; 
       checkDate.setDate(checkDate.getDate() - 1); 
-    } else {
-      break;
-    }
+    } else break;
   }
   return streak;
-};
-
-const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
-  const today = new Date();
-  const currentMon = getStartOfWeek(today);
-  let streak = 0;
-  let checkMon = new Date(currentMon);
-  checkMon.setDate(checkMon.getDate() - 7);
-  while (streak < 500) {
-    let weekSuccess = true;
-    let anyRegularDay = false;
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(checkMon);
-      d.setDate(d.getDate() + i);
-      const dk = getLocalDateKey(d);
-      const summary = history[dk];
-      if (!isDaySuccessful(summary)) { weekSuccess = false; break; }
-      if (summary && (summary.status === 'regular' || !summary.status)) anyRegularDay = true;
-    }
-    if (weekSuccess && anyRegularDay) { 
-      streak++; 
-      checkMon.setDate(checkMon.getDate() - 7); 
-    } else {
-      break;
-    }
-  }
-  return streak;
-};
-
-const isBonusUsedInWeekInternal = (date: Date, currentHistory: Record<string, DaySummary>, currentDailyMeals: Record<string, 'regular' | 'bonus' | null>, excludeDateKey?: string) => {
-  const startOfWeek = getStartOfWeek(date);
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(endOfWeek.getDate() + 6);
-  const usedInHistory = Object.values(currentHistory).some(summary => {
-    if (summary.date === excludeDateKey) return false;
-    const d = new Date(summary.date);
-    return d >= startOfWeek && d <= endOfWeek && summary.hasBonus;
-  });
-  return usedInHistory || Object.values(currentDailyMeals).some(v => v === 'bonus');
-};
-
-const getDynamicMotivation = (history: Record<string, DaySummary>, name: string) => {
-  const dates = Object.keys(history).sort().reverse();
-  const last7Dates = dates.slice(0, 7);
-  const last7Days = last7Dates.map(d => history[d]);
-  if (dates.length === 0) return { title: `Benvenuto, ${name} ✨`, subtitle: "Iniziamo questo viaggio insieme, con gentilezza." };
-  const completedCount = last7Days.filter(d => isDaySuccessful(d)).length;
-  if (last7Days[0]?.status === 'sick' || last7Days[0]?.status === 'holiday') return { title: `${name}, pensa al riposo 🍵`, subtitle: "Il tuo corpo ha bisogno di energia per guarire." };
-  if (completedCount >= 6) return { title: `Stai splendendo, ${name}! 🌟`, subtitle: "La tua costanza è d'ispirazione. Continua così." };
-  if (completedCount >= 4) return { title: `Ottimo ritmo, ${name} 🍃`, subtitle: "Stai costruendo basi solide per il tuo benessere." };
-  return { title: `Un passo alla volta, ${name} 🌸`, subtitle: "Ogni pasto è un nuovo atto di gentilezza verso di te." };
 };
 
 // --- COMPONENTE PRINCIPALE ---
@@ -194,12 +110,12 @@ const App: React.FC = () => {
       streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
     };
     try {
-      const saved = localStorage.getItem('luce_user_state');
+      const saved = localStorage.getItem('luce_user_state_v3');
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const todayStr = new Date().toDateString();
       if (parsed.lastCheckIn !== todayStr) {
-        return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: parsed.history || {}, streak: calculateDailyStreak(parsed.history || {}), weeklyStreak: calculateWeeklyStreak(parsed.history || {}) };
+        return { ...parsed, dailyMeals: {}, rewardClaimed: false, isDayClosed: false };
       }
       return parsed;
     } catch { return defaultState; }
@@ -210,55 +126,48 @@ const App: React.FC = () => {
   const [showReward, setShowReward] = useState(false);
   const [mealToSelect, setMealToSelect] = useState<string | null>(null);
 
-  // Live API Refs
+  // Audio refs
   const inputAudioContextRef = useRef<AudioContext | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
-  const nextStartTimeRef = useRef(0);
-  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const [isLiveActive, setIsLiveActive] = useState(false);
 
   useEffect(() => {
-    const checkKey = () => {
-      const key = process.env.API_KEY;
-      if (key && key.trim() !== "") {
-        setAiStatus('ok');
-      } else {
-        setAiStatus('error');
-      }
-    };
-    checkKey();
+    const key = process.env.API_KEY;
+    setAiStatus(key && key.length > 5 ? 'ok' : 'error');
   }, []);
 
   useEffect(() => {
-    try { localStorage.setItem('luce_user_state', JSON.stringify(user)); } catch {}
+    localStorage.setItem('luce_user_state_v3', JSON.stringify(user));
   }, [user]);
 
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | null) => {
     const now = new Date();
     const dateKey = getLocalDateKey(now);
     const newDailyMeals = { ...user.dailyMeals, [mealId]: status };
+    
     setUser(prev => {
       const mealsCount = Object.values(newDailyMeals).filter(Boolean).length;
-      const hasBonusToday = Object.values(newDailyMeals).some(v => v === 'bonus');
-      const bonusAlreadyUsedThisWeek = isBonusUsedInWeekInternal(now, prev.history, {}, dateKey);
-      const isActuallyCompleted = mealsCount === MEALS.length && (!hasBonusToday || !bonusAlreadyUsedThisWeek);
-      const todaySummary: DaySummary = { date: dateKey, isCompleted: isActuallyCompleted, mealsCount, hasBonus: hasBonusToday, mood: prev.history[dateKey]?.mood || 'felice', meals: newDailyMeals, status: prev.history[dateKey]?.status || 'regular' };
-      const newHistory = { ...prev.history, [dateKey]: todaySummary };
-      return { ...prev, dailyMeals: newDailyMeals, lastCheckIn: now.toDateString(), history: newHistory, bonusUsed: isBonusUsedInWeekInternal(now, newHistory, newDailyMeals), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
+      const isCompleted = mealsCount === MEALS.length;
+      const summary: DaySummary = { 
+        date: dateKey, 
+        isCompleted, 
+        mealsCount, 
+        hasBonus: Object.values(newDailyMeals).some(v => v === 'bonus'), 
+        mood: prev.history[dateKey]?.mood || 'felice', 
+        meals: newDailyMeals, 
+        status: prev.history[dateKey]?.status || 'regular' 
+      };
+      const newHistory = { ...prev.history, [dateKey]: summary };
+      return { ...prev, dailyMeals: newDailyMeals, history: newHistory, streak: calculateDailyStreak(newHistory) };
     });
     setMealToSelect(null);
   };
 
-  const updateHistoryForDay = (dateKey: string, summary: DaySummary) => {
+  const updateHistoryEntry = (dk: string, summary: DaySummary) => {
     setUser(prev => {
-      const newHistory = { ...prev.history, [dateKey]: summary };
-      return {
-        ...prev,
-        history: newHistory,
-        streak: calculateDailyStreak(newHistory),
-        weeklyStreak: calculateWeeklyStreak(newHistory)
-      };
+      const newHistory = { ...prev.history, [dk]: summary };
+      return { ...prev, history: newHistory, streak: calculateDailyStreak(newHistory) };
     });
   };
 
@@ -266,23 +175,15 @@ const App: React.FC = () => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
-    
     const responseText = await getLuceResponse(messages, text);
-    
-    if (responseText === "OPS_KEY_ERROR") {
-      setAiStatus('error');
-      setMessages(prev => [...prev, { role: 'assistant', content: "C'è un piccolo problema con la mia chiave magica (API Key). Assicurati di averla configurata correttamente su Vercel! ✨", timestamp: new Date() }]);
-    } else {
-      setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: new Date() }]);
-    }
+    if (responseText === "OPS_KEY_ERROR") setAiStatus('error');
+    setMessages(prev => [...prev, { role: 'assistant', content: responseText === "OPS_KEY_ERROR" ? "Configurazione API non valida ✨" : responseText, timestamp: new Date() }]);
     setIsTyping(false);
   };
 
-  const toggleLiveSession = async () => {
+  const toggleLive = async () => {
     if (isLiveActive) {
       sessionRef.current?.close();
-      inputAudioContextRef.current?.close();
-      outputAudioContextRef.current?.close();
       setIsLiveActive(false);
       return;
     }
@@ -291,9 +192,7 @@ const App: React.FC = () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      inputAudioContextRef.current = inputCtx;
-      outputAudioContextRef.current = outputCtx;
-      nextStartTimeRef.current = 0;
+      
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
@@ -302,31 +201,26 @@ const App: React.FC = () => {
             const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
-              sessionPromise.then(s => s.sendRealtimeInput({ media: createBlob(inputData) }));
+              const int16 = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
+              sessionPromise.then(s => s.sendRealtimeInput({ media: { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' } }));
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
             setIsLiveActive(true);
           },
-          onmessage: async (message: LiveServerMessage) => {
-            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (base64Audio) {
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
-              const audioBuffer = await decodeAudioData(decode(base64Audio), outputCtx, 24000, 1);
+          onmessage: async (msg) => {
+            const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (audioData) {
+              const buffer = await decodeAudioData(decode(audioData), outputCtx, 24000, 1);
               const source = outputCtx.createBufferSource();
-              source.buffer = audioBuffer;
+              source.buffer = buffer;
               source.connect(outputCtx.destination);
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
-              sourcesRef.current.add(source);
-              source.onended = () => sourcesRef.current.delete(source);
+              source.start();
             }
           },
           onclose: () => setIsLiveActive(false),
-          onerror: () => {
-             setIsLiveActive(false);
-             setAiStatus('error');
-          }
+          onerror: () => setIsLiveActive(false)
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
@@ -334,338 +228,333 @@ const App: React.FC = () => {
     } catch { setIsLiveActive(false); }
   };
 
-  const finalizeDay = (data: CheckInData) => {
-    const now = new Date();
-    const dateKey = getLocalDateKey(now);
+  const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | null> }) => {
+    const dk = getLocalDateKey();
     setUser(prev => {
-      const mealsCount = Object.values(prev.dailyMeals).filter(Boolean).length;
-      const hasBonusToday = Object.values(prev.dailyMeals).some(v => v === 'bonus');
-      const bonusAlreadyUsedThisWeek = isBonusUsedInWeekInternal(now, prev.history, {}, dateKey);
-      const isCompleted = (data.status === 'holiday' || data.status === 'sick') ? true : (mealsCount === MEALS.length && (!hasBonusToday || !bonusAlreadyUsedThisWeek));
-      const summary: DaySummary = { date: dateKey, isCompleted, mealsCount, hasBonus: hasBonusToday, mood: data.mood, meals: { ...prev.dailyMeals }, status: data.status || 'regular' };
-      const newHistory = { ...prev.history, [dateKey]: summary };
-      return { ...prev, history: newHistory, isDayClosed: true, lastCheckIn: now.toDateString(), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
+      const mealsToUse = data.meals || prev.dailyMeals;
+      const mealsCount = Object.values(mealsToUse).filter(Boolean).length;
+      const isCompleted = (data.status === 'holiday' || data.status === 'sick') ? true : (mealsCount === MEALS.length);
+      
+      const summary: DaySummary = { 
+        ...prev.history[dk], 
+        date: dk, 
+        isCompleted, 
+        mood: data.mood, 
+        status: data.status,
+        mealsCount,
+        meals: mealsToUse
+      };
+      const newHistory = { ...prev.history, [dk]: summary };
+      return { 
+        ...prev, 
+        history: newHistory, 
+        dailyMeals: mealsToUse,
+        isDayClosed: true, 
+        lastCheckIn: new Date().toDateString(), 
+        streak: calculateDailyStreak(newHistory) 
+      };
     });
     setView('dashboard');
     setShowReward(true);
-    sendMessage("Ho concluso la mia giornata. Grazie Luce! ✨", true);
+    sendMessage("Ho completato la giornata! Grazie Luce ✨", true);
   };
 
   return (
-    <div className="min-h-screen max-w-md mx-auto flex flex-col shadow-2xl bg-[#fffafb] relative overflow-hidden">
+    <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
       <header className="px-6 pt-8 pb-4 flex justify-between items-center z-10">
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 bg-rose-400 rounded-2xl flex items-center justify-center text-white shadow-lg"><Sun size={24} /></div>
           <h1 className="text-xl font-bold text-gray-800">Luce</h1>
         </div>
-        {view !== 'dashboard' && <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400"><ArrowRight className="rotate-180" size={20} /></button>}
+        {view !== 'dashboard' && <button onClick={() => setView('dashboard')} className="p-2 rounded-full hover:bg-gray-100 text-gray-400 transition-colors"><ArrowRight className="rotate-180" size={20} /></button>}
       </header>
 
       <main className="flex-1 px-6 pb-2 z-10 overflow-y-auto">
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500 pb-12">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-bold text-gray-800 leading-tight">{getDynamicMotivation(user.history, user.name).title}</h2>
-              <p className="text-gray-500 text-[13px] italic font-medium leading-relaxed">{getDynamicMotivation(user.history, user.name).subtitle}</p>
+            <div className="space-y-1">
+              <h2 className="text-2xl font-bold text-gray-800">Ciao, Luca ✨</h2>
+              <p className="text-gray-500 text-xs font-medium">Sii gentile con te stesso oggi.</p>
             </div>
+            
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-indigo-50 p-6 rounded-[2rem] flex flex-col items-center border border-indigo-100 shadow-sm"><Trophy className="text-indigo-500 mb-1" size={32} /><span className="text-4xl font-bold text-indigo-900">{user.weeklyStreak}</span><span className="text-[10px] uppercase tracking-widest text-indigo-500 font-extrabold">Settimane</span></div>
-              <div className={`p-6 rounded-[2rem] flex flex-col items-center border shadow-sm ${user.bonusUsed ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}><Heart className={`size-[32px] mb-1 ${user.bonusUsed ? 'text-amber-500 fill-amber-500' : 'text-emerald-500 fill-emerald-500'}`} /><span className={`text-xl font-bold ${user.bonusUsed ? 'text-amber-600' : 'text-emerald-600'}`}>{user.bonusUsed ? 'Utilizzato' : 'Libero'}</span><span className={`text-[10px] uppercase tracking-widest font-extrabold ${user.bonusUsed ? 'text-amber-500' : 'text-emerald-500'}`}>Bonus</span></div>
+              <div className="bg-indigo-50 p-6 rounded-[2rem] flex flex-col items-center border border-indigo-100 shadow-sm"><Trophy className="text-indigo-500 mb-1" size={32} /><span className="text-4xl font-bold text-indigo-900">{user.streak}</span><span className="text-[10px] uppercase font-extrabold text-indigo-500">Giorni Streak</span></div>
+              <div className="bg-emerald-50 p-6 rounded-[2rem] flex flex-col items-center border border-emerald-100 shadow-sm"><Heart className="text-emerald-500 mb-1" size={32} /><span className="text-xl font-bold text-emerald-900">{user.bonusUsed ? 'Utilizzato' : 'Disponibile'}</span><span className="text-[10px] uppercase font-extrabold text-emerald-500">Bonus Sett.</span></div>
             </div>
-            <div className="bg-gray-50/50 p-6 rounded-[2.5rem] space-y-3">
-              <h3 className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Sun className="text-amber-400" size={20} /> Pasti di Oggi</h3>
+
+            <div className="bg-gray-50/50 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
+              <h3 className="font-bold text-gray-700 mb-1 flex items-center gap-2"><Sun className="text-amber-400" size={20} /> Pasti Odierni</h3>
               {MEALS.map(meal => (
                 <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all">
-                  <div className="flex items-center gap-4 text-left">
-                    <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-gray-50/50">
-                      {meal.icon === 'coffee' && <Coffee size={24} className="text-gray-400" />}
-                      {meal.icon === 'apple' && <Apple size={24} className="text-gray-400" />}
-                      {meal.icon === 'utensils' && <Utensils size={24} className="text-gray-400" />}
-                      {meal.icon === 'moon' && <Moon size={24} className="text-gray-400" />}
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-gray-50">
+                      {meal.icon === 'coffee' ? <Coffee size={20} className="text-gray-400" /> : <Utensils size={20} className="text-gray-400" />}
                     </div>
-                    <div><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400 font-medium">{meal.time}</p></div>
+                    <div className="text-left"><p className="text-sm font-bold text-gray-700">{meal.label}</p><p className="text-[10px] text-gray-400">{meal.time}</p></div>
                   </div>
-                  {user.dailyMeals[meal.id] ? (<div className={`rounded-full p-1.5 ${user.dailyMeals[meal.id] === 'bonus' ? 'bg-amber-500' : 'bg-emerald-500'}`}>{user.dailyMeals[meal.id] === 'bonus' ? <Star size={18} className="text-white fill-current" /> : <Check size={18} className="text-white" />}</div>) : <div className="w-7 h-7 rounded-full border-2 border-gray-100" />}
+                  {user.dailyMeals[meal.id] ? <div className={`rounded-full p-1.5 ${user.dailyMeals[meal.id] === 'bonus' ? 'bg-amber-400 shadow-amber-200' : 'bg-emerald-400 shadow-emerald-200'} shadow-lg`}><Check size={16} className="text-white" /></div> : <div className="w-6 h-6 rounded-full border-2 border-gray-100" />}
                 </button>
               ))}
             </div>
-            {!user.isDayClosed ? <button onClick={() => setView('checkin')} className="w-full bg-[#1e293b] text-white py-5 rounded-[2rem] font-bold shadow-2xl flex items-center justify-center gap-2 text-lg active:scale-95">Chiudi la Giornata <Sparkles size={22} /></button> : <div className="bg-amber-100 p-6 rounded-[2.5rem] border border-amber-200 text-amber-800 text-center font-bold">Giornata conclusa! Ottimo lavoro ✨</div>}
+
+            {!user.isDayClosed ? <button onClick={() => setView('checkin')} className="w-full bg-[#1e293b] text-white py-5 rounded-[2.5rem] font-bold shadow-2xl flex items-center justify-center gap-2 text-lg active:scale-95 transition-all">Completa la Giornata <Sparkles size={22} /></button> : <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-600 font-bold border border-rose-100">Giornata conclusa con cura ✨</div>}
             
-            <div className="flex justify-center mb-4"><div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}><div className={`w-1.5 h-1.5 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[9px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
+            <div className="flex justify-center"><div className={`px-4 py-1.5 rounded-full border flex items-center gap-2 ${aiStatus === 'ok' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}><div className={`w-1.5 h-1.5 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[9px] font-bold uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
         )}
-        {view === 'checkin' && <CheckInForm onSubmit={finalizeDay} onCancel={() => setView('dashboard')} />}
-        {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} onToggleLive={toggleLiveSession} />}
-        {view === 'calendar' && <CalendarView user={user} onUpdateDay={updateHistoryForDay} />}
+        
+        {view === 'checkin' && <CheckInForm initialData={{ mood: user.history[getLocalDateKey()]?.mood || 'felice', status: user.history[getLocalDateKey()]?.status || 'regular', meals: user.dailyMeals }} onSubmit={closeDay} onCancel={() => setView('dashboard')} />}
+        {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} onToggleLive={toggleLive} />}
+        {view === 'calendar' && <CalendarView user={user} onUpdate={updateHistoryEntry} />}
       </main>
 
-      {mealToSelect && <MealSelector mealToSelect={mealToSelect} isWeeklyBonusUsed={user.bonusUsed} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} userMeals={user.dailyMeals} />}
+      {mealToSelect && <MealSelector onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
       {showReward && <RewardModal onClaim={() => setShowReward(false)} />}
 
       <nav className="p-4 flex justify-around items-center border-t border-gray-100 bg-white z-20">
-        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 ${view === 'calendar' ? 'text-gray-800' : 'text-gray-300'}`}><CalendarIcon size={28} /></button>
+        <button onClick={() => setView('calendar')} className={`flex flex-col items-center gap-1 transition-all ${view === 'calendar' ? 'text-gray-800 scale-110' : 'text-gray-300'}`}><CalendarIcon size={28} /></button>
         <div className="relative -top-6"><button onClick={() => setView('dashboard')} className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white transition-all ${view === 'dashboard' ? 'bg-rose-400 scale-110' : 'bg-gray-300'}`}><Sun size={32} /></button></div>
-        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 ${view === 'chat' ? 'text-gray-800' : 'text-gray-300'}`}><MessageCircle size={28} /></button>
+        <button onClick={() => setView('chat')} className={`flex flex-col items-center gap-1 transition-all ${view === 'chat' ? 'text-gray-800 scale-110' : 'text-gray-300'}`}><MessageCircle size={28} /></button>
       </nav>
     </div>
   );
 };
 
-const CheckInForm: React.FC<{ onSubmit: (data: any) => void; onCancel: () => void; initialData?: any }> = ({ onSubmit, onCancel, initialData }) => {
+// --- COMPONENTI UI ---
+const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData }) => {
   const [mood, setMood] = useState(initialData?.mood || 'felice');
-  const [emotions, setEmotions] = useState(initialData?.emotions || '');
-  const [status, setStatus] = useState<'regular' | 'holiday' | 'sick'>(initialData?.status || 'regular');
+  const [status, setStatus] = useState(initialData?.status || 'regular');
+  const [meals, setMeals] = useState<Record<string, 'regular' | 'bonus' | null>>(initialData?.meals || {});
+
+  const toggleMeal = (mealId: string) => {
+    setMeals(prev => {
+      const current = prev[mealId];
+      let next: 'regular' | 'bonus' | null = null;
+      if (current === null) next = 'regular';
+      else if (current === 'regular') next = 'bonus';
+      else next = null;
+      return { ...prev, [mealId]: next };
+    });
+  };
+
   return (
-    <div className="space-y-6 pb-12 animate-in slide-in-from-bottom duration-500">
-      <h2 className="text-2xl font-bold text-gray-800">Com'è andata la giornata?</h2>
-      <div className="grid grid-cols-3 gap-3">
-        {['regular', 'holiday', 'sick'].map(s => <button key={s} onClick={() => setStatus(s as any)} className={`p-4 rounded-3xl border-2 transition-all ${status === s ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white border-gray-100 text-gray-300'}`}><span className="text-[10px] font-bold uppercase">{s}</span></button>)}
+    <div className="space-y-8 animate-in slide-in-from-bottom duration-500 pb-12">
+      <h2 className="text-2xl font-bold text-gray-800 leading-tight">Com'è andata la giornata?</h2>
+      
+      {/* STATO ODIERNO */}
+      <div className="space-y-4">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Stato Odierno</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'regular', label: 'Regolare' },
+            { id: 'holiday', label: 'Vacanza' },
+            { id: 'sick', label: 'Malattia' }
+          ].map(s => (
+            <button 
+              key={s.id} 
+              onClick={() => setStatus(s.id as any)} 
+              className={`py-4 rounded-3xl border-2 transition-all font-bold text-[10px] uppercase shadow-sm ${status === s.id ? 'border-rose-400 bg-rose-50 text-rose-600' : 'bg-white text-gray-400 border-gray-100'}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        {[{id:'felice', icon:Smile}, {id:'così così', icon:Meh}, {id:'difficile', icon:Frown}].map(m => <button key={m.id} onClick={() => setMood(m.id)} className={`p-4 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50' : 'bg-white border-gray-100'}`}><m.icon size={28} className="mx-auto" /></button>)}
+
+      {/* MODIFICA PASTI */}
+      <div className="space-y-4">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Controlla i tuoi Pasti</p>
+        <div className="space-y-2">
+          {MEALS.map(meal => (
+            <button 
+              key={meal.id} 
+              onClick={() => toggleMeal(meal.id)}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-white border border-gray-100 shadow-sm active:scale-95 transition-all"
+            >
+              <span className="text-xs font-bold text-gray-700">{meal.label}</span>
+              <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${
+                meals[meal.id] === 'bonus' ? 'bg-amber-100 text-amber-600' : 
+                meals[meal.id] === 'regular' ? 'bg-emerald-100 text-emerald-600' : 
+                'bg-gray-100 text-gray-400'
+              }`}>
+                {meals[meal.id] === 'bonus' ? 'Bonus' : meals[meal.id] === 'regular' ? 'Ok' : 'Manca'}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
-      <textarea value={emotions} onChange={e => setEmotions(e.target.value)} placeholder="Come ti senti?" className="w-full p-4 rounded-3xl border-2 border-gray-100 focus:border-rose-200 focus:ring-0 min-h-[120px] text-sm" />
-      <div className="flex gap-4"><button onClick={onCancel} className="flex-1 py-4 font-bold text-gray-400">Annulla</button><button onClick={() => onSubmit({mood, emotions, status})} className="flex-[2] bg-rose-400 text-white py-4 rounded-3xl font-bold shadow-lg">Salva</button></div>
+
+      {/* MOOD SELECTION */}
+      <div className="space-y-4">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Il tuo Mood</p>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { id: 'felice', icon: Smile, color: 'text-emerald-500' },
+            { id: 'così così', icon: Meh, color: 'text-amber-500' },
+            { id: 'difficile', icon: Frown, color: 'text-rose-500' }
+          ].map(m => (
+            <button 
+              key={m.id} 
+              onClick={() => setMood(m.id)} 
+              className={`p-6 rounded-3xl border-2 transition-all ${mood === m.id ? 'border-rose-400 bg-rose-50 shadow-md' : 'bg-white border-gray-100'}`}
+            >
+              <m.icon size={32} className={`mx-auto ${mood === m.id ? m.color : 'text-gray-300'}`} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-4 pt-4">
+        <button onClick={onCancel} className="flex-1 py-5 font-bold text-gray-400">Torna indietro</button>
+        <button onClick={() => onSubmit({ mood, status, meals })} className="flex-[2] bg-rose-400 text-white py-5 rounded-[2rem] font-bold shadow-xl active:scale-95 transition-all text-sm">Salva Progressi ✨</button>
+      </div>
+    </div>
+  );
+};
+
+const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
+  const [curr, setCurr] = useState(new Date());
+  const [editing, setEditing] = useState<any>(null);
+
+  const grid = useMemo(() => {
+    const y = curr.getFullYear(), m = curr.getMonth();
+    const firstDay = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const padding = firstDay === 0 ? 6 : firstDay - 1;
+    const items = [];
+    for (let i = 0; i < padding; i++) items.push(null);
+    for (let i = 1; i <= daysInMonth; i++) items.push(new Date(y, m, i));
+    const weeks = [];
+    for (let i = 0; i < items.length; i += 7) weeks.push(items.slice(i, i + 7));
+    return weeks;
+  }, [curr]);
+
+  const isWeekPerfect = (week: any[]) => {
+    const validDays = week.filter(d => d !== null);
+    if (validDays.length === 0) return false;
+    return validDays.every(d => isDaySuccessful(user.history[getLocalDateKey(d)]));
+  };
+
+  if (editing) return (
+    <CheckInForm 
+      initialData={{ 
+        mood: user.history[editing.key]?.mood || 'felice', 
+        status: user.history[editing.key]?.status || 'regular',
+        meals: user.history[editing.key]?.meals || {}
+      }} 
+      onSubmit={(d:any) => { 
+        const mealsCount = Object.values(d.meals || {}).filter(Boolean).length;
+        const isCompleted = (d.status === 'holiday' || d.status === 'sick') ? true : (mealsCount === MEALS.length);
+        onUpdate(editing.key, { ...user.history[editing.key], ...d, isCompleted, mealsCount }); 
+        setEditing(null); 
+      }} 
+      onCancel={() => setEditing(null)} 
+    />
+  );
+
+  return (
+    <div className="space-y-6 pb-12 animate-in fade-in">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><TrendingUp className="text-rose-400" /> Il Tuo Viaggio</h2>
+        <div className="flex items-center gap-2 bg-white p-1 rounded-full border shadow-sm">
+          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() - 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronLeft size={20} /></button>
+          <span className="text-xs font-bold uppercase px-2">{curr.toLocaleDateString('it-IT', { month: 'short', year: 'numeric' })}</span>
+          <button onClick={() => setCurr(new Date(curr.getFullYear(), curr.getMonth() + 1, 1))} className="p-2 hover:bg-rose-50 rounded-full transition-colors"><ChevronRight size={20} /></button>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+        <div className="grid grid-cols-8 gap-1 mb-4">
+          {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom', 'Premio'].map(h => (
+            <div key={h} className="text-center text-[8px] font-extrabold text-gray-300 uppercase tracking-tighter">{h}</div>
+          ))}
+          {grid.map((week, wi) => (
+            <React.Fragment key={wi}>
+              {week.map((d, di) => {
+                if (!d) return <div key={`empty-${wi}-${di}`} className="w-9 h-9" />;
+                const dk = getLocalDateKey(d);
+                const summary = user.history[dk];
+                const success = isDaySuccessful(summary);
+                const isToday = dk === getLocalDateKey();
+                return (
+                  <button key={dk} onClick={() => setEditing({ date: d, key: dk })} className={`w-9 h-9 rounded-xl flex items-center justify-center text-xs font-bold transition-all hover:scale-110 active:scale-90 ${success ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : summary ? 'bg-rose-50 text-rose-500 border border-rose-100' : 'bg-gray-50 text-gray-400'} ${isToday ? 'ring-2 ring-rose-300 ring-offset-1' : ''}`}>
+                    {d.getDate()}
+                  </button>
+                );
+              })}
+              <div className="flex justify-center items-center">
+                {isWeekPerfect(week) ? (
+                  <div className="w-8 h-8 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 animate-bounce shadow-sm">
+                    <Star size={14} className="text-amber-500 fill-amber-500" />
+                  </div>
+                ) : (
+                  <div className="w-2 h-2 rounded-full bg-gray-100" />
+                )}
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-[2.5rem] border border-gray-100 space-y-4 shadow-sm">
+        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Legenda Viaggio</p>
+        <div className="grid grid-cols-2 gap-y-3 gap-x-6">
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-emerald-100 border border-emerald-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Completato</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-rose-100 border border-rose-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Sfida</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded-md" /><span className="text-[11px] font-bold text-gray-600">Vuoto</span></div>
+          <div className="flex items-center gap-3"><div className="w-4 h-4 bg-amber-100 border border-amber-200 rounded-full flex items-center justify-center"><Star size={10} className="text-amber-500 fill-amber-500" /></div><span className="text-[11px] font-bold text-gray-600">Premio Sett.</span></div>
+        </div>
+      </div>
     </div>
   );
 };
 
 const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActive, onToggleLive }) => {
-  const [input, setInput] = useState('');
+  const [inp, setInp] = useState('');
   return (
     <div className="flex flex-col h-[65vh] space-y-4">
-      <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-        {messages.map((m:any, i:number) => <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[80%] p-4 rounded-3xl text-sm ${m.role === 'user' ? 'bg-rose-400 text-white' : 'bg-white border border-rose-50'}`}>{m.content}</div></div>)}
-        {isTyping && <div className="flex justify-start"><div className="bg-white p-4 rounded-3xl border border-rose-50 animate-pulse">...</div></div>}
+      <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+        {messages.map((m: any, i: number) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`p-4 rounded-[1.8rem] text-sm max-w-[85%] ${m.role === 'user' ? 'bg-rose-400 text-white shadow-lg' : 'bg-white border border-rose-50 shadow-sm text-gray-700'}`}>{m.content}</div>
+          </div>
+        ))}
+        {isTyping && <div className="text-rose-300 text-[10px] animate-pulse font-bold uppercase tracking-widest px-4">Luce sta pensando...</div>}
       </div>
-      <div className="flex items-center gap-2 bg-white p-2 rounded-full border border-gray-100 shadow-sm mt-auto">
-        <button onClick={onToggleLive} className={`p-3 rounded-full ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
-        <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (onSendMessage(input), setInput(''))} placeholder="Parla con Luce..." className="flex-1 bg-transparent border-none text-sm px-2" />
-        <button onClick={() => (onSendMessage(input), setInput(''))} className="p-3 bg-rose-400 text-white rounded-full shadow-md"><Send size={20} /></button>
+      <div className="flex gap-2 bg-white p-2 rounded-full border shadow-lg items-center mt-auto">
+        <button onClick={onToggleLive} className={`p-3 rounded-full transition-all ${isLiveActive ? 'bg-rose-500 text-white animate-pulse' : 'bg-rose-50 text-rose-400'}`}>{isLiveActive ? <MicOff size={20} /> : <Mic size={20} />}</button>
+        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 text-sm bg-transparent outline-none px-3" />
+        <button onClick={() => { onSendMessage(inp); setInp(''); }} className="p-3 bg-rose-400 text-white rounded-full shadow-lg active:scale-90 transition-all"><Send size={20} /></button>
       </div>
     </div>
   );
 };
 
-// --- CALENDAR VIEW (MONTH GRID WITH EDITING) ---
-const CalendarView: React.FC<{ user: UserState, onUpdateDay: (dk: string, summary: DaySummary) => void }> = ({ user, onUpdateDay }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [editingDay, setEditingDay] = useState<{ date: Date, key: string } | null>(null);
-
-  const daysInMonth = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    
-    const days = [];
-    const startDay = firstDay.getDay(); 
-    const padding = startDay === 0 ? 6 : startDay - 1; 
-    
-    for (let i = 0; i < padding; i++) days.push(null);
-    for (let i = 1; i <= lastDay.getDate(); i++) days.push(new Date(year, month, i));
-    
-    return days;
-  }, [currentDate]);
-
-  // Divide days into weeks for "Weekly Result" display
-  const weeks = useMemo(() => {
-    const result = [];
-    for (let i = 0; i < daysInMonth.length; i += 7) {
-      result.push(daysInMonth.slice(i, i + 7));
-    }
-    return result;
-  }, [daysInMonth]);
-
-  const changeMonth = (offset: number) => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
-  };
-
-  const handleDayUpdate = (data: any) => {
-    if (!editingDay) return;
-    const dk = editingDay.key;
-    const existing = user.history[dk] || { date: dk, mealsCount: 0, hasBonus: false, mood: 'felice', meals: {}, isCompleted: false };
-    const updated: DaySummary = {
-      ...existing,
-      mood: data.mood,
-      status: data.status,
-      isCompleted: (data.status === 'holiday' || data.status === 'sick') ? true : existing.isCompleted
-    };
-    onUpdateDay(dk, updated);
-    setEditingDay(null);
-  };
-
-  const isWeekSuccessful = (week: (Date | null)[]) => {
-    const validDays = week.filter((d): d is Date => d !== null);
-    if (validDays.length === 0) return false;
-    return validDays.every(d => isDaySuccessful(user.history[getLocalDateKey(d)]));
-  };
-
-  const weekdays = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
-
-  if (editingDay) {
-    const summary = user.history[editingDay.key];
-    return (
-      <div className="space-y-6 animate-in fade-in">
-        <div className="flex items-center gap-2">
-          <button onClick={() => setEditingDay(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full">
-            <ChevronLeft size={24} />
-          </button>
-          <h2 className="text-xl font-bold text-gray-800">Modifica {editingDay.date.toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}</h2>
-        </div>
-        <CheckInForm onSubmit={handleDayUpdate} onCancel={() => setEditingDay(null)} initialData={summary} />
+const MealSelector: React.FC<any> = ({ onSelect, onCancel }) => (
+  <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-[60] flex items-end p-4 animate-in fade-in">
+    <div className="w-full bg-white rounded-[3rem] p-8 space-y-6 animate-in slide-in-from-bottom duration-300 shadow-2xl border-t border-rose-100">
+      <div className="text-center space-y-2">
+        <h3 className="font-bold text-xl text-gray-800">Cura il tuo Pasto</h3>
+        <p className="text-xs text-gray-400">Ogni pasto è un atto di gentilezza.</p>
       </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6 pb-12 animate-in fade-in">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <TrendingUp size={24} className="text-rose-400" /> Il Tuo Viaggio
-        </h2>
-        <div className="flex items-center gap-2 bg-white p-1 rounded-full border border-gray-100 shadow-sm">
-          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-rose-50 rounded-full text-rose-400 transition-colors">
-            <ChevronLeft size={20} />
-          </button>
-          <span className="text-xs font-bold text-gray-600 px-2 min-w-[100px] text-center capitalize">
-            {currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
-          </span>
-          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-rose-50 rounded-full text-rose-400 transition-colors">
-            <ChevronRight size={20} />
-          </button>
-        </div>
+      <div className="grid gap-4">
+        <button onClick={() => onSelect('colazione', 'regular')} className="w-full p-6 bg-emerald-50 text-emerald-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-emerald-100 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={24} /></button>
+        <button onClick={() => onSelect('colazione', 'bonus')} className="w-full p-6 bg-amber-50 text-amber-700 rounded-[1.8rem] font-bold flex justify-between items-center border border-amber-100 hover:bg-amber-100 transition-colors">Usa Bonus <Star size={24} /></button>
       </div>
-
-      <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-gray-50 overflow-hidden">
-        <div className="grid grid-cols-8 mb-4">
-          {weekdays.map(day => (
-            <div key={day} className="text-center text-[9px] font-extrabold text-gray-300 uppercase tracking-widest pb-2">
-              {day}
-            </div>
-          ))}
-          <div className="text-center text-[9px] font-extrabold text-rose-300 uppercase tracking-widest pb-2">
-            Sett.
-          </div>
-        </div>
-        
-        <div className="space-y-4">
-          {weeks.map((week, wIdx) => {
-            const weekFull = isWeekSuccessful(week);
-            return (
-              <div key={`week-${wIdx}`} className="grid grid-cols-8 gap-y-4 items-center">
-                {week.map((date, dIdx) => {
-                  if (!date) return <div key={`empty-${wIdx}-${dIdx}`} />;
-                  const dk = getLocalDateKey(date);
-                  const summary = user.history[dk];
-                  const isSuccess = isDaySuccessful(summary);
-                  const isToday = dk === getLocalDateKey(new Date());
-
-                  return (
-                    <button 
-                      key={dk} 
-                      onClick={() => setEditingDay({ date, key: dk })}
-                      className="flex flex-col items-center relative hover:scale-110 transition-transform"
-                    >
-                      <div className={`
-                        w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs transition-all relative
-                        ${isSuccess ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : summary ? 'bg-rose-50 text-rose-500 border border-rose-100' : 'bg-gray-50 text-gray-400'}
-                        ${isToday ? 'ring-2 ring-rose-300 ring-offset-2' : ''}
-                      `}>
-                        {date.getDate()}
-                      </div>
-                    </button>
-                  );
-                })}
-                
-                {/* Colonna Risultato Settimanale (dopo la domenica) */}
-                <div className="flex justify-center">
-                  {weekFull ? (
-                    <div className="w-9 h-9 bg-amber-50 rounded-full flex items-center justify-center border border-amber-100 shadow-sm animate-bounce">
-                      <Star size={16} className="text-amber-500 fill-amber-500" />
-                    </div>
-                  ) : week.some(d => d && getLocalDateKey(d) === getLocalDateKey(new Date())) ? (
-                    <div className="w-9 h-9 bg-gray-50 rounded-full flex items-center justify-center border border-gray-100 border-dashed">
-                      <Loader2 size={16} className="text-gray-300 animate-spin" />
-                    </div>
-                  ) : week.every(d => d === null || (d && d < new Date())) ? (
-                     <div className="w-9 h-9 bg-rose-50/50 rounded-full flex items-center justify-center border border-rose-100 border-dashed">
-                      <X size={16} className="text-rose-200" />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Legenda Colori */}
-      <div className="bg-white p-6 rounded-[2rem] border border-gray-100 space-y-4">
-        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Legenda Viaggio</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-md bg-emerald-100 border border-emerald-200" />
-            <span className="text-xs font-medium text-gray-600">Completato ✨</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-md bg-rose-100 border border-rose-200" />
-            <span className="text-xs font-medium text-gray-600">Sfida Incontrata 🍃</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-md bg-gray-100 border border-gray-200" />
-            <span className="text-xs font-medium text-gray-600">Da iniziare</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center">
-              <Star size={8} className="text-amber-500 fill-amber-500" />
-            </div>
-            <span className="text-xs font-medium text-gray-600">Settimana Top 🌟</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-emerald-50 p-4 rounded-3xl border border-emerald-100 flex flex-col items-center">
-          <CheckCircle2 size={20} className="text-emerald-500 mb-1" />
-          <span className="text-[10px] uppercase font-extrabold text-emerald-600">Completati</span>
-          <span className="text-xl font-bold text-emerald-900">{Object.values(user.history).filter(isDaySuccessful).length}</span>
-        </div>
-        <div className="bg-rose-50 p-4 rounded-3xl border border-rose-100 flex flex-col items-center">
-          <TrendingUp size={20} className="text-rose-500 mb-1" />
-          <span className="text-[10px] uppercase font-extrabold text-rose-600">Streak Max</span>
-          <span className="text-xl font-bold text-rose-900">{user.streak}</span>
-        </div>
-        <div className="bg-indigo-50 p-4 rounded-3xl border border-indigo-100 flex flex-col items-center">
-          <Sparkles size={20} className="text-indigo-500 mb-1" />
-          <span className="text-[10px] uppercase font-extrabold text-indigo-600">Bonus Sett.</span>
-          <span className="text-xl font-bold text-indigo-900">{user.bonusUsed ? 'Usato' : 'Pronto'}</span>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const MealSelector: React.FC<any> = ({ mealToSelect, isWeeklyBonusUsed, onSelect, onCancel, userMeals }) => (
-  <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end justify-center p-4">
-    <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 shadow-2xl animate-in slide-in-from-bottom">
-      <h3 className="text-xl font-bold text-gray-800 text-center">Registra Pasto</h3>
-      <div className="grid gap-3">
-        <button onClick={() => onSelect(mealToSelect, 'regular')} className="w-full p-5 rounded-3xl bg-emerald-50 border-2 border-emerald-100 text-emerald-700 font-bold flex justify-between">Regolare <Check /></button>
-        <button onClick={() => onSelect(mealToSelect, 'bonus')} disabled={isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus'} className={`w-full p-5 rounded-3xl border-2 font-bold flex justify-between ${isWeeklyBonusUsed && userMeals[mealToSelect] !== 'bonus' ? 'bg-gray-50 border-gray-100 text-gray-300' : 'bg-amber-50 border-amber-100 text-amber-700'}`}>Bonus <Star /></button>
-      </div>
-      <button onClick={onCancel} className="w-full text-gray-400 font-bold py-2">Chiudi</button>
+      <button onClick={onCancel} className="w-full py-2 text-gray-400 font-bold hover:text-gray-600 transition-colors">Forse più tardi</button>
     </div>
   </div>
 );
 
-const RewardModal: React.FC<{ onClaim: () => void }> = ({ onClaim }) => (
-  <div className="fixed inset-0 bg-rose-400/90 backdrop-blur-md z-[100] flex items-center justify-center p-8">
-    <div className="bg-white rounded-[3rem] p-10 text-center space-y-6 shadow-2xl animate-in zoom-in duration-500">
-      <Trophy size={64} className="mx-auto text-amber-400" />
-      <h2 className="text-2xl font-bold text-gray-800">Che Splendore! ✨</h2>
-      <p className="text-gray-500 text-sm">Hai completato la giornata. Sei stato bravissimo!</p>
-      <button onClick={onClaim} className="w-full py-5 bg-rose-400 text-white rounded-3xl font-bold shadow-lg">Ricevi un Abbraccio 💖</button>
+const RewardModal: React.FC<any> = ({ onClaim }) => (
+  <div className="fixed inset-0 bg-rose-400/90 z-[100] flex items-center justify-center p-10 backdrop-blur-lg animate-in fade-in">
+    <div className="bg-white rounded-[3rem] p-12 text-center space-y-6 animate-in zoom-in duration-500 shadow-2xl">
+      <div className="w-24 h-24 bg-amber-50 rounded-full flex items-center justify-center mx-auto shadow-inner"><Trophy size={60} className="text-amber-400" /></div>
+      <div className="space-y-2">
+        <h2 className="text-3xl font-bold text-gray-800">Che Splendore! ✨</h2>
+        <p className="text-gray-500 text-sm leading-relaxed">Hai concluso un'altra giornata del tuo percorso. Sei stato davvero coraggioso oggi.</p>
+      </div>
+      <button onClick={onClaim} className="w-full py-6 bg-rose-400 text-white rounded-[2rem] font-bold shadow-2xl active:scale-95 transition-all text-lg">Ricevi un Abbraccio Virtuale 💖</button>
     </div>
   </div>
 );
