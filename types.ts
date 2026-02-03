@@ -7,6 +7,7 @@ export interface DaySummary {
   mood: string;
   meals?: Record<string, 'regular' | 'bonus' | 'ko' | null>;
   status?: 'regular' | 'holiday' | 'sick';
+  isClosed?: boolean;
 }
 
 export interface UserState {

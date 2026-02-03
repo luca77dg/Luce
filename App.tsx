@@ -204,6 +204,7 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
     }
     if (hasKoInWeek || weekStatus === 'fail') break;
     if (weekStatus === 'success' && anyRegular) totalCount++;
+    // Fix: Corrected setDate usage to use getDate() for calculating the new date.
     checkMonday.setDate(checkMonday.getDate() - 7);
   }
   return totalCount;
@@ -218,19 +219,25 @@ const App: React.FC = () => {
       streak: 0, weeklyStreak: 0, bonusUsed: false, lastCheckIn: null, name: 'Luca', dailyMeals: {}, rewardClaimed: false, isDayClosed: false, history: {}
     };
     try {
-      const saved = localStorage.getItem('luce_user_v8');
+      const saved = localStorage.getItem('luce_user_v9');
       if (!saved) return defaultState;
       const parsed = JSON.parse(saved);
       const history = parsed.history || {};
       const newStreak = calculateDailyStreak(history);
       const newWeeklyStreak = calculateWeeklyStreak(history);
-      const todayStr = new Date().toDateString();
       const todayKey = getLocalDateKey();
-      if (parsed.lastCheckIn !== todayStr) {
-        const todayHistory = history[todayKey];
-        return { ...parsed, dailyMeals: todayHistory?.meals || {}, rewardClaimed: false, isDayClosed: false, streak: newStreak, weeklyStreak: newWeeklyStreak, history: history };
-      }
-      return { ...parsed, dailyMeals: history[todayKey]?.meals || parsed.dailyMeals || {}, streak: newStreak, weeklyStreak: newWeeklyStreak, history: history };
+      
+      // Sincronizziamo dailyMeals con la history di oggi all'avvio
+      const todayHistory = history[todayKey];
+      return { 
+        ...parsed, 
+        dailyMeals: todayHistory?.meals || {}, 
+        rewardClaimed: parsed.lastCheckIn !== new Date().toDateString() ? false : parsed.rewardClaimed,
+        isDayClosed: !!todayHistory?.isClosed, 
+        streak: newStreak, 
+        weeklyStreak: newWeeklyStreak, 
+        history: history 
+      };
     } catch { return defaultState; }
   });
 
@@ -243,40 +250,47 @@ const App: React.FC = () => {
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
 
-  // Fix: implement updateHistoryEntry to handle history updates from calendar
+  const todayKey = getLocalDateKey();
+
+  // Single source of truth per i pasti di oggi
+  const currentMeals = useMemo(() => user.history[todayKey]?.meals || user.dailyMeals || {}, [user.history, user.dailyMeals, todayKey]);
+  const isTodayClosed = useMemo(() => !!user.history[todayKey]?.isClosed, [user.history, todayKey]);
+
+  const capitalizedToday = useMemo(() => {
+    const dateStr = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+    return dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+  }, []);
+
   const updateHistoryEntry = (key: string, summary: DaySummary) => {
     setUser(prev => {
       const newHistory = { ...prev.history, [key]: summary };
+      const isUpdatingToday = key === todayKey;
       return {
         ...prev,
         history: newHistory,
+        dailyMeals: isUpdatingToday ? (summary.meals || {}) : prev.dailyMeals,
         streak: calculateDailyStreak(newHistory),
         weeklyStreak: calculateWeeklyStreak(newHistory)
       };
     });
   };
 
-  // Fix: implement setMealStatus to handle meal selection from dashboard
   const setMealStatus = (mealId: string, status: 'regular' | 'bonus' | 'ko' | null) => {
-    const dk = getLocalDateKey();
     setUser(prev => {
-      const newMeals = { ...prev.dailyMeals, [mealId]: status };
-      const currentStatus = prev.history[dk]?.status || 'regular';
-      const isCompleted = calculateDayCompletion(currentStatus, newMeals, prev.history, new Date(), dk);
-      const mealsValues = Object.values(newMeals);
-      const mealsCount = mealsValues.filter(v => v !== null).length;
-      const hasBonus = mealsValues.some(v => v === 'bonus');
+      const newMeals = { ...currentMeals, [mealId]: status };
+      const currentDayData = prev.history[todayKey] || { date: todayKey, mood: 'felice', status: 'regular' };
+      const isCompleted = calculateDayCompletion(currentDayData.status || 'regular', newMeals, prev.history, new Date(), todayKey);
       
       const newSummary: DaySummary = { 
-        ...(prev.history[dk] || { date: dk, mood: 'felice' }),
-        date: dk,
+        ...currentDayData,
+        date: todayKey,
         meals: newMeals, 
         isCompleted,
-        mealsCount,
-        hasBonus,
-        status: currentStatus
+        mealsCount: Object.values(newMeals).filter(v => v !== null).length,
+        hasBonus: Object.values(newMeals).some(v => v === 'bonus')
       };
-      const newHistory = { ...prev.history, [dk]: newSummary };
+      
+      const newHistory = { ...prev.history, [todayKey]: newSummary };
       return { 
         ...prev, 
         dailyMeals: newMeals, 
@@ -288,7 +302,6 @@ const App: React.FC = () => {
     setMealToSelect(null);
   };
 
-  // Helper per sbloccare l'audio su iOS
   const unlockAudio = async () => {
     const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
     if (AudioContextClass) {
@@ -304,13 +317,9 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('luce_user_v8', JSON.stringify(user));
+    localStorage.setItem('luce_user_v9', JSON.stringify(user));
   }, [user]);
 
-  const todayKey = getLocalDateKey();
-  const currentMeals = useMemo(() => user.history[todayKey]?.meals || user.dailyMeals || {}, [user.history, user.dailyMeals, todayKey]);
-
-  // Fix: use casted aistudio to avoid declaration conflict
   const openApiKeySelector = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio) {
@@ -325,7 +334,6 @@ const App: React.FC = () => {
     if (!text.trim()) return;
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
-    
     try {
       const responseText = await getLuceResponse(messages, text);
       if (responseText === "OPS_KEY_ERROR") {
@@ -350,28 +358,18 @@ const App: React.FC = () => {
       setIsLiveActive(false);
       return;
     }
-
     setIsLiveLoading(true);
     try {
       const apiKey = process.env.API_KEY;
-      if (!apiKey) {
-        await openApiKeySelector();
-        setIsLiveLoading(false);
-        return;
-      }
-
+      if (!apiKey) { await openApiKeySelector(); setIsLiveLoading(false); return; }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(async err => {
-        alert("Per favore, attiva il microfono nelle impostazioni del tuo iPhone.");
-        throw err;
+        alert("Per favore, attiva il microfono nelle impostazioni del tuo iPhone."); throw err;
       });
-      
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       const inputCtx = new AudioContextClass({ sampleRate: 16000 });
       const outputCtx = new AudioContextClass({ sampleRate: 24000 });
-
       if (inputCtx.state === 'suspended') await inputCtx.resume();
       if (outputCtx.state === 'suspended') await outputCtx.resume();
-
       const ai = new GoogleGenAI({ apiKey });
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -387,57 +385,45 @@ const App: React.FC = () => {
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputCtx.destination);
-            setIsLiveActive(true);
-            setIsLiveLoading(false);
-            setAiStatus('ok');
+            setIsLiveActive(true); setIsLiveLoading(false); setAiStatus('ok');
           },
           onmessage: async (msg) => {
             const audioData = msg.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (audioData) {
               const buffer = await decodeAudioData(decode(audioData), outputCtx, 24000, 1);
               const source = outputCtx.createBufferSource();
-              source.buffer = buffer;
-              source.connect(outputCtx.destination);
-              source.start();
+              source.buffer = buffer; source.connect(outputCtx.destination); source.start();
             }
           },
           onclose: () => { setIsLiveActive(false); setIsLiveLoading(false); inputCtx.close(); outputCtx.close(); },
           onerror: async (e: any) => { 
-            setIsLiveActive(false); 
-            setIsLiveLoading(false);
-            if (e?.message?.includes('not found') || e?.message?.includes('404') || e?.message?.includes('403')) {
-               await openApiKeySelector();
-            }
+            setIsLiveActive(false); setIsLiveLoading(false);
+            if (e?.message?.includes('not found') || e?.message?.includes('404') || e?.message?.includes('403')) await openApiKeySelector();
           }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
       });
       sessionRef.current = await sessionPromise;
-    } catch (e) { 
-      setIsLiveActive(false);
-      setIsLiveLoading(false);
-    }
+    } catch (e) { setIsLiveActive(false); setIsLiveLoading(false); }
   };
 
-  // Fix: populate DaySummary fully in closeDay
   const closeDay = (data: CheckInData & { meals?: Record<string, 'regular' | 'bonus' | 'ko' | null> }) => {
-    const dk = getLocalDateKey();
     setUser(prev => {
       const mealsToUse = data.meals || prev.dailyMeals;
-      const mealsValues = Object.values(mealsToUse);
-      const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), dk);
+      const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), todayKey);
       const summary: DaySummary = { 
-        ...prev.history[dk], 
-        date: dk, 
+        ...prev.history[todayKey], 
+        date: todayKey, 
         isCompleted, 
         mood: data.mood, 
         status: data.status, 
         meals: mealsToUse,
-        mealsCount: mealsValues.filter(v => v !== null).length,
-        hasBonus: mealsValues.some(v => v === 'bonus')
+        mealsCount: Object.values(mealsToUse).filter(v => v !== null).length,
+        hasBonus: Object.values(mealsToUse).some(v => v === 'bonus'),
+        isClosed: true
       };
-      const newHistory = { ...prev.history, [dk]: summary };
-      return { ...prev, history: newHistory, dailyMeals: mealsToUse, isDayClosed: true, lastCheckIn: new Date().toDateString(), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
+      const newHistory = { ...prev.history, [todayKey]: summary };
+      return { ...prev, history: newHistory, dailyMeals: mealsToUse, lastCheckIn: new Date().toDateString(), streak: calculateDailyStreak(newHistory), weeklyStreak: calculateWeeklyStreak(newHistory) };
     });
     setView('dashboard');
     setShowReward(true);
@@ -447,13 +433,13 @@ const App: React.FC = () => {
   const bonusUsedThisWeek = useMemo(() => hasBonusInWeek(user.history, new Date()), [user.history]);
 
   const motivationalPhrase = useMemo(() => {
-    if (user.isDayClosed) return "Splendido lavoro per oggi! Luce è fiera di te. 💖";
+    if (isTodayClosed) return "Splendido lavoro per oggi! Luce è fiera di te. 💖";
     if (user.weeklyStreak >= 4) return "Oltre un mese di cammino! La tua luce splende fortissima. 🌟";
     if (user.weeklyStreak >= 1) return "Settimane di coraggio! Continua così, un passo alla volta. 🌈";
     if (user.streak >= 3) return "Stai andando alla grande! La costanza è la tua superpotenza. 🦋";
     if (user.streak > 0) return "Hai iniziato il tuo viaggio! Ogni pasto è una vittoria. 🌸";
     return "Sii gentile con te stesso oggi. Sei prezioso e unico. ✨";
-  }, [user.weeklyStreak, user.streak, user.isDayClosed]);
+  }, [user.weeklyStreak, user.streak, isTodayClosed]);
 
   return (
     <div className="min-h-screen max-w-md mx-auto flex flex-col bg-[#fffafb] shadow-2xl relative overflow-hidden">
@@ -468,7 +454,7 @@ const App: React.FC = () => {
               <Key size={24} />
             </button>
           )}
-          {view === 'dashboard' && !user.isDayClosed ? (
+          {view === 'dashboard' && !isTodayClosed ? (
             <button onClick={() => setView('checkin')} className="p-2 rounded-full hover:bg-rose-50 text-gray-900 transition-colors">
               <ArrowRight size={24} strokeWidth={2.5} />
             </button>
@@ -484,6 +470,7 @@ const App: React.FC = () => {
         {view === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-500 pb-12">
             <div className="space-y-1">
+              <p className="text-[11px] font-black text-rose-400 uppercase tracking-widest">{capitalizedToday}</p>
               <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Ciao, {user.name} ✨</h2>
               <p className="text-gray-700 text-sm font-semibold leading-relaxed">{motivationalPhrase}</p>
             </div>
@@ -504,7 +491,7 @@ const App: React.FC = () => {
             <div className="bg-gray-100/40 p-6 rounded-[2.5rem] space-y-3 shadow-inner">
               <h3 className="font-black text-gray-900 mb-2 flex items-center gap-2 text-base uppercase tracking-wider"><Sun className="text-amber-500" size={22} strokeWidth={2.5} /> Pasti Odierni</h3>
               {MEALS.map(meal => (
-                <button key={meal.id} onClick={() => !user.isDayClosed && setMealToSelect(meal.id)} disabled={user.isDayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all group border border-gray-100/50">
+                <button key={meal.id} onClick={() => !isTodayClosed && setMealToSelect(meal.id)} disabled={isTodayClosed} className="w-full flex items-center justify-between p-4 rounded-3xl bg-white shadow-sm active:scale-95 transition-all group border border-gray-100/50">
                   <div className="flex items-center gap-4">
                     <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-gray-50 group-hover:bg-rose-50 transition-colors">
                       {meal.icon === 'coffee' && <Coffee size={22} className="text-gray-600" strokeWidth={2} />}
@@ -523,15 +510,15 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            {user.isDayClosed && <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-700 font-black border border-rose-200 animate-in fade-in shadow-sm tracking-tight">Giornata conclusa con cura ✨</div>}
+            {isTodayClosed && <div className="p-6 bg-rose-50 rounded-[2.5rem] text-center text-rose-700 font-black border border-rose-200 animate-in fade-in shadow-sm tracking-tight">Giornata conclusa con cura ✨</div>}
             
             <div className="flex justify-center"><div className={`px-5 py-2 rounded-full border-2 flex items-center gap-2 shadow-sm ${aiStatus === 'ok' ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-rose-50 border-rose-100 text-rose-700'}`}><div className={`w-2 h-2 rounded-full ${aiStatus === 'ok' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} /><span className="text-[10px] font-black uppercase tracking-widest">{aiStatus === 'ok' ? 'Luce Online' : 'Luce Offline'}</span></div></div>
           </div>
         )}
         
-        {view === 'checkin' && <CheckInForm history={user.history} dateKey={getLocalDateKey()} initialData={{ mood: user.history[getLocalDateKey()]?.mood || 'felice', status: user.history[getLocalDateKey()]?.status || 'regular', meals: currentMeals }} onSubmit={closeDay} onCancel={() => setView('dashboard')} />}
+        {view === 'checkin' && <CheckInForm history={user.history} dateKey={todayKey} initialData={{ mood: user.history[todayKey]?.mood || 'felice', status: user.history[todayKey]?.status || 'regular', meals: currentMeals }} onSubmit={closeDay} onCancel={() => setView('dashboard')} />}
         {view === 'chat' && <ChatView messages={messages} onSendMessage={sendMessage} isTyping={isTyping} isLiveActive={isLiveActive} isLiveLoading={isLiveLoading} onToggleLive={toggleLive} />}
-        {view === 'calendar' && <CalendarView user={user} onUpdate={updateHistoryEntry} />}
+        {view === 'calendar' && <CalendarView user={user} todayKey={todayKey} onUpdate={updateHistoryEntry} />}
       </main>
 
       {mealToSelect && <MealSelector mealId={mealToSelect} isBonusAvailable={!bonusUsedThisWeek} onSelect={setMealStatus} onCancel={() => setMealToSelect(null)} />}
@@ -580,8 +567,7 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
   };
 
   const resetDay = () => {
-    setStatus('regular');
-    setMood('felice');
+    setStatus('regular'); setMood('felice');
     const emptyMeals: Record<string, null> = {};
     MEALS.forEach(m => emptyMeals[m.id] = null);
     setMeals(emptyMeals);
@@ -631,7 +617,7 @@ const CheckInForm: React.FC<any> = ({ onSubmit, onCancel, initialData, history, 
   );
 };
 
-const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
+const CalendarView: React.FC<any> = ({ user, onUpdate, todayKey }) => {
   const [curr, setCurr] = useState(new Date());
   const [editing, setEditing] = useState<any>(null);
   const grid = useMemo(() => {
@@ -678,15 +664,12 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
     return 'bg-rose-100 text-rose-800 border-2 border-rose-300';
   };
 
-  // Fix: CalendarView's onSubmit now populates DaySummary fully
   if (editing) return <CheckInForm history={user.history} dateKey={editing.key} initialData={{ mood: user.history[editing.key]?.mood || 'felice', status: user.history[editing.key]?.status || 'regular', meals: user.history[editing.key]?.meals || {} }} onSubmit={(d:any) => { 
     const targetDate = parseDateKey(editing.key); 
     const mealsValues = Object.values(d.meals || {});
     const isCompleted = calculateDayCompletion(d.status || 'regular', d.meals || {}, user.history, targetDate, editing.key); 
     onUpdate(editing.key, { 
-      ...user.history[editing.key], 
-      ...d, 
-      isCompleted,
+      ...user.history[editing.key], ...d, isCompleted,
       mealsCount: mealsValues.filter(v => v !== null).length,
       hasBonus: mealsValues.some(v => v === 'bonus')
     }); 
@@ -708,7 +691,7 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
           {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom', 'Premio'].map(h => <div key={h} className="text-center text-[9px] font-black text-gray-400 uppercase tracking-tighter">{h}</div>)}
           {grid.map((week, wi) => (
             <React.Fragment key={wi}>
-              {week.map((d, di) => d ? <button key={getLocalDateKey(d)} onClick={() => setEditing({ date: d, key: getLocalDateKey(d) })} className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black transition-all hover:scale-110 active:scale-90 ${getDayColorClass(getLocalDateKey(d))} ${getLocalDateKey(d) === getLocalDateKey() ? 'ring-3 ring-rose-400 ring-offset-2' : ''}`}>{d.getDate()}</button> : <div key={`empty-${wi}-${di}`} className="w-10 h-10" />)}
+              {week.map((d, di) => d ? <button key={getLocalDateKey(d)} onClick={() => setEditing({ date: d, key: getLocalDateKey(d) })} className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black transition-all hover:scale-110 active:scale-90 ${getDayColorClass(getLocalDateKey(d))} ${getLocalDateKey(d) === todayKey ? 'ring-3 ring-rose-400 ring-offset-2' : ''}`}>{d.getDate()}</button> : <div key={`empty-${wi}-${di}`} className="w-10 h-10" />)}
               <div className="flex justify-center items-center">{week[6] && getWeekStatusIcon(week[6])}</div>
             </React.Fragment>
           ))}
@@ -721,11 +704,7 @@ const CalendarView: React.FC<any> = ({ user, onUpdate }) => {
 const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActive, isLiveLoading, onToggleLive }) => {
   const [inp, setInp] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
-
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
   return (
     <div className="flex flex-col h-[65vh] space-y-4">
       <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
@@ -738,30 +717,12 @@ const ChatView: React.FC<any> = ({ messages, onSendMessage, isTyping, isLiveActi
         {isTyping && <div className="text-rose-600 text-[11px] animate-pulse font-black uppercase tracking-widest px-4">Luce sta scrivendo...</div>}
         <div ref={messagesEndRef} />
       </div>
-      
       <div className="relative flex items-center bg-white p-2.5 rounded-[2.5rem] border-2 border-rose-100 shadow-2xl gap-3 mt-auto">
-        <button 
-          type="button"
-          onClick={(e) => { e.preventDefault(); onToggleLive(); }} 
-          disabled={isLiveLoading}
-          className={`flex-none w-11 h-11 flex items-center justify-center rounded-full transition-all shadow-sm ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-90 hover:bg-rose-100'}`}
-        >
+        <button type="button" onClick={(e) => { e.preventDefault(); onToggleLive(); }} disabled={isLiveLoading} className={`flex-none w-11 h-11 flex items-center justify-center rounded-full transition-all shadow-sm ${isLiveActive ? 'bg-rose-600 text-white animate-pulse' : isLiveLoading ? 'bg-gray-100 text-gray-400' : 'bg-rose-50 text-rose-500 active:scale-90 hover:bg-rose-100'}`}>
           {isLiveLoading ? <Loader2 size={24} className="animate-spin" /> : isLiveActive ? <MicOff size={24} strokeWidth={2.5} /> : <Mic size={24} strokeWidth={2.5} />}
         </button>
-        
-        <input 
-          value={inp} 
-          onChange={e => setInp(e.target.value)} 
-          onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} 
-          placeholder="Parla con Luce..." 
-          className="flex-1 min-w-0 text-[16px] font-bold bg-transparent outline-none py-2 text-gray-900 placeholder:text-gray-300" 
-        />
-        
-        <button 
-          type="button"
-          onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} 
-          className="flex-none w-11 h-11 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-90 transition-all hover:bg-rose-600"
-        >
+        <input value={inp} onChange={e => setInp(e.target.value)} onKeyDown={e => e.key === 'Enter' && inp.trim() && (onSendMessage(inp), setInp(''))} placeholder="Parla con Luce..." className="flex-1 min-w-0 text-[16px] font-bold bg-transparent outline-none py-2 text-gray-900 placeholder:text-gray-300" />
+        <button type="button" onClick={() => inp.trim() && (onSendMessage(inp), setInp(''))} className="flex-none w-11 h-11 flex items-center justify-center bg-rose-500 text-white rounded-full shadow-lg active:scale-90 transition-all hover:bg-rose-600">
           <Send size={24} strokeWidth={2.5} />
         </button>
       </div>
@@ -777,6 +738,7 @@ const MealSelector: React.FC<any> = ({ onSelect, onCancel, isBonusAvailable, mea
         <button onClick={() => onSelect(mealId, 'regular')} className="w-full p-7 bg-emerald-50 text-emerald-900 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 border-emerald-200 hover:bg-emerald-100 transition-colors">Pasto Regolare <Check size={28} strokeWidth={3} /></button>
         <button onClick={() => isBonusAvailable && onSelect(mealId, 'bonus')} disabled={!isBonusAvailable} className={`w-full p-7 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 transition-all ${isBonusAvailable ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100' : 'bg-gray-50 text-gray-400 border-gray-200 opacity-60 cursor-not-allowed'}`}>Usa Bonus <Star size={28} strokeWidth={2.5} fill={isBonusAvailable ? "currentColor" : "none"} /></button>
         <button onClick={() => onSelect(mealId, 'ko')} className="w-full p-7 bg-rose-50 text-rose-900 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 border-rose-200 hover:bg-rose-100 transition-colors">Pasto Saltato / KO <XCircle size={28} strokeWidth={2.5} /></button>
+        <button onClick={() => onSelect(mealId, null)} className="w-full p-7 bg-gray-50 text-gray-700 rounded-[2rem] font-black text-lg flex justify-between items-center border-3 border-gray-200 hover:bg-gray-100 transition-colors">Resetta Selezione <RotateCcw size={28} strokeWidth={2.5} /></button>
       </div>
       <button onClick={onCancel} className="w-full py-2 text-gray-500 font-black uppercase text-[12px] tracking-widest hover:text-gray-900 transition-colors">Più tardi</button>
     </div>
