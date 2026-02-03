@@ -204,7 +204,6 @@ const calculateWeeklyStreak = (history: Record<string, DaySummary>): number => {
     }
     if (hasKoInWeek || weekStatus === 'fail') break;
     if (weekStatus === 'success' && anyRegular) totalCount++;
-    // Fix: Corrected setDate usage to use getDate() for calculating the new date.
     checkMonday.setDate(checkMonday.getDate() - 7);
   }
   return totalCount;
@@ -226,8 +225,6 @@ const App: React.FC = () => {
       const newStreak = calculateDailyStreak(history);
       const newWeeklyStreak = calculateWeeklyStreak(history);
       const todayKey = getLocalDateKey();
-      
-      // Sincronizziamo dailyMeals con la history di oggi all'avvio
       const todayHistory = history[todayKey];
       return { 
         ...parsed, 
@@ -251,8 +248,6 @@ const App: React.FC = () => {
   const [isLiveLoading, setIsLiveLoading] = useState(false);
 
   const todayKey = getLocalDateKey();
-
-  // Single source of truth per i pasti di oggi
   const currentMeals = useMemo(() => user.history[todayKey]?.meals || user.dailyMeals || {}, [user.history, user.dailyMeals, todayKey]);
   const isTodayClosed = useMemo(() => !!user.history[todayKey]?.isClosed, [user.history, todayKey]);
 
@@ -264,11 +259,10 @@ const App: React.FC = () => {
   const updateHistoryEntry = (key: string, summary: DaySummary) => {
     setUser(prev => {
       const newHistory = { ...prev.history, [key]: summary };
-      const isUpdatingToday = key === todayKey;
       return {
         ...prev,
         history: newHistory,
-        dailyMeals: isUpdatingToday ? (summary.meals || {}) : prev.dailyMeals,
+        dailyMeals: key === todayKey ? (summary.meals || {}) : prev.dailyMeals,
         streak: calculateDailyStreak(newHistory),
         weeklyStreak: calculateWeeklyStreak(newHistory)
       };
@@ -280,7 +274,6 @@ const App: React.FC = () => {
       const newMeals = { ...currentMeals, [mealId]: status };
       const currentDayData = prev.history[todayKey] || { date: todayKey, mood: 'felice', status: 'regular' };
       const isCompleted = calculateDayCompletion(currentDayData.status || 'regular', newMeals, prev.history, new Date(), todayKey);
-      
       const newSummary: DaySummary = { 
         ...currentDayData,
         date: todayKey,
@@ -289,7 +282,6 @@ const App: React.FC = () => {
         mealsCount: Object.values(newMeals).filter(v => v !== null).length,
         hasBonus: Object.values(newMeals).some(v => v === 'bonus')
       };
-      
       const newHistory = { ...prev.history, [todayKey]: newSummary };
       return { 
         ...prev, 
@@ -302,20 +294,6 @@ const App: React.FC = () => {
     setMealToSelect(null);
   };
 
-  const unlockAudio = async () => {
-    const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
-    if (AudioContextClass) {
-      const ctx = new AudioContextClass();
-      if (ctx.state === 'suspended') await ctx.resume();
-      await ctx.close();
-    }
-  };
-
-  useEffect(() => {
-    window.addEventListener('touchstart', unlockAudio, { once: true });
-    return () => window.removeEventListener('touchstart', unlockAudio);
-  }, []);
-
   useEffect(() => {
     localStorage.setItem('luce_user_v9', JSON.stringify(user));
   }, [user]);
@@ -325,20 +303,32 @@ const App: React.FC = () => {
     if (aistudio) {
       await aistudio.openSelectKey();
       setAiStatus('ok');
-    } else {
-      alert("Configurazione API non disponibile. Per favore riprova più tardi.");
     }
   };
 
   const sendMessage = async (text: string, silent = false) => {
     if (!text.trim()) return;
+
+    // Verifica se la chiave API è configurata (per il deploy)
+    const aistudio = (window as any).aistudio;
+    if (aistudio && !(await aistudio.hasSelectedApiKey()) && !process.env.API_KEY) {
+      await openApiKeySelector();
+      // Procediamo assumendo che l'utente abbia selezionato la chiave
+    }
+
     if (!silent) setMessages(prev => [...prev, { role: 'user', content: text, timestamp: new Date() }]);
     setIsTyping(true);
+    
     try {
       const responseText = await getLuceResponse(messages, text);
+      
       if (responseText === "OPS_KEY_ERROR") {
         setAiStatus('error');
-        setMessages(prev => [...prev, { role: 'assistant', content: "Ops! La mia chiave API sembra non funzionare. Puoi riconfigurarla cliccando sull'icona della chiave? ✨", timestamp: new Date() }]);
+        setMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: "Ops! La mia connessione sembra interrotta. Per favore, clicca sull'icona della chiave in alto per configurare l'accesso e tornare a parlare con me ✨", 
+          timestamp: new Date() 
+        }]);
         await openApiKeySelector();
       } else {
         setAiStatus('ok');
@@ -346,7 +336,11 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: "C'è stato un piccolo intoppo tecnico, ma sono sempre qui per te! 💖", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "C'è stato un piccolo intoppo tecnico, ma sono sempre qui per te! Prova a ricaricare la pagina o a riconfigurare la chiave se il problema persiste 💖", 
+        timestamp: new Date() 
+      }]);
     } finally {
       setIsTyping(false);
     }
@@ -361,16 +355,15 @@ const App: React.FC = () => {
     setIsLiveLoading(true);
     try {
       const apiKey = process.env.API_KEY;
-      if (!apiKey) { await openApiKeySelector(); setIsLiveLoading(false); return; }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(async err => {
-        alert("Per favore, attiva il microfono nelle impostazioni del tuo iPhone."); throw err;
-      });
+      const aistudio = (window as any).aistudio;
+      if (!apiKey && aistudio) { await openApiKeySelector(); }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
       const inputCtx = new AudioContextClass({ sampleRate: 16000 });
       const outputCtx = new AudioContextClass({ sampleRate: 24000 });
-      if (inputCtx.state === 'suspended') await inputCtx.resume();
-      if (outputCtx.state === 'suspended') await outputCtx.resume();
-      const ai = new GoogleGenAI({ apiKey });
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
@@ -395,10 +388,10 @@ const App: React.FC = () => {
               source.buffer = buffer; source.connect(outputCtx.destination); source.start();
             }
           },
-          onclose: () => { setIsLiveActive(false); setIsLiveLoading(false); inputCtx.close(); outputCtx.close(); },
+          onclose: () => { setIsLiveActive(false); setIsLiveLoading(false); },
           onerror: async (e: any) => { 
             setIsLiveActive(false); setIsLiveLoading(false);
-            if (e?.message?.includes('not found') || e?.message?.includes('404') || e?.message?.includes('403')) await openApiKeySelector();
+            if (e?.message?.includes('not found') || e?.message?.includes('404')) await openApiKeySelector();
           }
         },
         config: { responseModalities: [Modality.AUDIO], systemInstruction: SYSTEM_INSTRUCTION }
@@ -413,11 +406,7 @@ const App: React.FC = () => {
       const isCompleted = calculateDayCompletion(data.status || 'regular', mealsToUse, prev.history, new Date(), todayKey);
       const summary: DaySummary = { 
         ...prev.history[todayKey], 
-        date: todayKey, 
-        isCompleted, 
-        mood: data.mood, 
-        status: data.status, 
-        meals: mealsToUse,
+        date: todayKey, isCompleted, mood: data.mood, status: data.status, meals: mealsToUse,
         mealsCount: Object.values(mealsToUse).filter(v => v !== null).length,
         hasBonus: Object.values(mealsToUse).some(v => v === 'bonus'),
         isClosed: true

@@ -15,7 +15,14 @@ REGOLE DI COMPORTAMENTO:
 `;
 
 export async function getLuceResponse(history: ChatMessage[], currentInput: string) {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  
+  if (!apiKey) {
+    return "OPS_KEY_ERROR";
+  }
+
+  // Creazione istanza al momento della chiamata per usare la chiave più recente
+  const ai = new GoogleGenAI({ apiKey });
   
   const formattedHistory = history.map(m => ({
     role: m.role === 'assistant' ? 'model' : 'user',
@@ -38,9 +45,20 @@ export async function getLuceResponse(history: ChatMessage[], currentInput: stri
     return response.text || "Sono qui con te! ✨";
   } catch (error: any) {
     console.error("Gemini Error:", error);
-    if (error?.message?.includes('API_KEY') || error?.status === 403 || error?.status === 401 || error?.message?.includes('not found')) {
+    const msg = error?.message?.toLowerCase() || "";
+    
+    // Gestione errori chiave o progetto non trovato
+    if (
+      msg.includes('api_key') || 
+      msg.includes('not found') || 
+      msg.includes('invalid') ||
+      error?.status === 403 || 
+      error?.status === 401 ||
+      error?.status === 404
+    ) {
        return "OPS_KEY_ERROR";
     }
-    return "Oggi la mia connessione è un po' timida, ma io ci sono sempre per te. 💖";
+    
+    throw error; // Rilancia per il catch esterno se è un errore tecnico diverso
   }
 }
